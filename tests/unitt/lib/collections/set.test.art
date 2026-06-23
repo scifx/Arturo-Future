@@ -1,0 +1,147 @@
+import {unitt}!
+import relative {../../commons/functions}!
+
+suite "set - string" [
+
+    test "updates characters by index" [
+        str: "Aaturo"
+        set str 1 'r'
+        assert -> "Arturo" = str
+    ]
+
+    test "supports multi-step assignment" [
+        str: "Aaturo"
+        str: "Arturo"
+        assert -> "Arturo" = str
+    ]
+
+    test "allows bracket indexing" [
+        str: "Aaturo"
+        str\1: 'r'
+        assert -> "Arturo" = str
+        str\[1]: 'r'
+        assert -> "Arturo" = str
+    ]
+
+]
+
+suite "set - binary" [
+
+    test "writes bytes via set" [
+        bi: to :binary 65000
+        set bi 0 1
+        assert -> "01 E8" = ~"|bi|"
+    ]
+
+    test "writes bytes via literal indexing" [
+        bi: to :binary 65000
+        bi\0: 1
+        assert -> "01 E8" = ~"|bi|"
+    ]
+
+]
+
+suite "set - dictionary" [
+
+    test "updates property keys" [
+        user: #[]
+        set user 'name "John"
+        assert -> "John" = user\name
+
+        set user 'surname "Doe"
+        assert -> "Doe" = user\surname
+
+        set user 'age 36
+        assert -> 36 = get user 'age
+    ]
+
+    test "supports string key updates and bracket syntax" [
+        user: #[]
+        set user "name" "Jane"
+        assert -> "Jane" = user\name
+
+        user\surname: "Dio"
+        assert -> "Dio" = user\surname
+
+        user\["age"]: 42
+        assert -> 42 = get user 'age
+    ]
+
+]
+
+suite "set - object" [
+
+    test "mutates object fields" [
+        define :person [name, surname]
+        user: to :person ["some" "name"]
+
+        set user 'name "John"
+        assert -> "John" = user\name
+
+        set user 'surname "Doe"
+        assert -> "Doe" = user\surname
+
+        set user 'age 36
+        assert -> 36 = get user 'age
+    ]
+
+    test "supports string keys and bracket access" [
+        define :person [name, surname]
+        user: to :person ["some" "name"]
+
+        set user "name" "Jane"
+        assert -> "Jane" = user\name
+
+        user\surname: "Dio"
+        assert -> "Dio" = user\surname
+
+        user\["age"]: 42
+        assert -> 42 = get user 'age
+    ]
+
+]
+
+suite "set - store" [
+
+    test "mutates store entries" [
+        s: store.json "test.json"
+        set s 'name "John"
+        assert -> "John" = s\name
+
+        set s 'surname "Doe"
+        assert -> "Doe" = s\surname
+
+        set s 'age 36
+        assert -> 36 = get s 'age
+
+        delete "test.json"
+    ]
+
+    test "supports numeric keys" [
+        s: store.json "test.json"
+        set s 0 "John"
+        assert -> "John" = s\0
+
+        s\[1]: "Doe"
+        assert -> "Doe" = s\1
+
+        s\[2]: 36
+        assert -> 36 = get s '2
+
+        delete "test.json"
+    ]
+
+]
+
+suite "set - block" [
+
+    test "updates block entries" [
+        a: ["zero" "one" "two"]
+        set a 0 "0"
+        assert -> "0" = a\0
+
+        a\[1]: "1"
+        assert -> "1" = a\1
+    ]
+
+]

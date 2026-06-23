@@ -1,0 +1,99 @@
+#!/usr/bin/env arturo
+
+Compilers: (key? args 'with)? -> split.by:"," args\with
+                              -> ["arturo","arturo-new"]
+
+Runs: (key? args 'runs)? -> ~"--max-runs |args\runs|"
+                         -> ""
+
+LookUp: args\values\0
+
+BenchmarkFile: "benchmark_results.json"
+Results: new []
+
+getList: function [pa][
+    pattern: to :regex ".*" ++ LookUp ++ ".*\.art"
+    result: select list.recursive pa 'x -> contains? x pattern
+    result: filter result 'x -> or? contains? x "_draft"
+                                    contains? x "projecteuler"
+    (contains? pa "examples")? [
+        return select result 're -> exists? replace re ".art" ".res"
+    ] -> return result
+]
+
+showHeader: function [id, total, tst][
+    print ""
+    print repeat "=" 120
+    print [color #green ~"[|id+1|/|total|]" tst]
+    print repeat "=" 120
+    print ""
+]
+
+processPartialResults: function [data][
+    basis: data\results\0\mean
+    dic: #[]
+    loop slice data\results 1 dec size data\results 'item [
+        dic\[item\parameters\compiler]: basis // item\mean
+    ]
+    'Results ++ dic
+]
+
+sanitizeResults: function [num][
+    compilers: keys Results\0
+    final: []
+    dicc: #[]
+    loop compilers 'comp -> dicc\[comp]: 0.0
+
+    loop Results 'res [
+        loop res [k,v][
+            dicc\[k]: dicc\[k] + v
+        ]
+    ]
+
+    loop compilers 'comp [
+        final: final ++ #[
+            compiler: comp,
+            speed: dicc\[comp] // num
+        ]
+    ]
+    return sort.descending.by:'speed final
+]
+
+presentResults: function [results][
+    clCyan: function [str][color.bold #cyan str]
+    clYellow: function [str][color.bold #yellow str]
+
+    topResult: first results
+    metric: topResult\speed
+    verb: (metric < 1.0)? -> "⬇️  decreased" -> "⬆️  increased"
+    if metric > 1.0 -> metric: metric - 1.0
+    metric: metric * 100.0
+    print ""
+    print clCyan repeat "=" 120
+    print (clCyan "| ") ++ clYellow "Best compiler"
+    print [(clCyan "| ") ++ "\t" topResult\compiler]
+    print (clCyan "| ") ++ clYellow "Performance"
+    print [(clCyan "| ") ++ "\t" verb "by approximately" ~"|to :string .format:{.2f} metric|%"]
+    print (clCyan "| ") ++ clYellow "Runner-up"
+    print [(clCyan "| ") ++ "\t" results\1\compiler]
+    print clCyan repeat "=" 120
+    print ""
+]
+
+tests: (getList "../benchmarks/tests") ++
+       (getList "examples")
+
+total: size tests
+loop.with:'i tests 'test [
+    showHeader i total test
+    scr: replace escape.shell test {"} {\"}
+    execute.directly ~{!sh
+        hyperfine -L compiler |join.with:"," Compilers| |Runs| --export-json |BenchmarkFile| "{compiler} |scr|"
+    }
+    processPartialResults read.json BenchmarkFile
+]
+
+sanitizedResults: sanitizeResults total
+presentResults sanitizedResults
+
+delete BenchmarkFile

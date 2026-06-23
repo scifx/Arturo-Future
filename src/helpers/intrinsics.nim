@@ -1,0 +1,128 @@
+#=======================================================
+# Arturo
+# Programming Language + Bytecode VM compiler
+# (c) 2019-2026 Yanis Zafirópulos
+#
+# @file: helpers/intrinsics.nim
+#=======================================================
+
+#=======================================
+# Libraries
+#=======================================
+
+import std/math
+
+#=======================================
+# Helpers
+#=======================================
+
+when defined(bit32):
+    func addIntWithOverflow*(a, b: int, res: var int): bool {.importc: "__builtin_sadd_overflow", nodecl, nosideeffect.}
+    func subIntWithOverflow*(a, b: int, res: var int): bool {.importc: "__builtin_ssub_overflow", nodecl, nosideeffect.}
+    func mulIntWithOverflow*(a, b: int, res: var int): bool {.importc: "__builtin_smul_overflow", nodecl, nosideeffect.}
+else:
+    when not defined(WEB):
+        when sizeof(int) == sizeof(clong):
+            func addIntWithOverflow*(a, b: int, res: var int): bool {.importc: "__builtin_saddl_overflow", nodecl, nosideeffect.}
+            func subIntWithOverflow*(a, b: int, res: var int): bool {.importc: "__builtin_ssubl_overflow", nodecl, nosideeffect.}
+            func mulIntWithOverflow*(a, b: int, res: var int): bool {.importc: "__builtin_smull_overflow", nodecl, nosideeffect.}
+        elif sizeof(int) == sizeof(clonglong):
+            func addIntWithOverflow*(a, b: int, res: var int): bool {.importc: "__builtin_saddll_overflow", nodecl, nosideeffect.}
+            func subIntWithOverflow*(a, b: int, res: var int): bool {.importc: "__builtin_ssubll_overflow", nodecl, nosideeffect.}
+            func mulIntWithOverflow*(a, b: int, res: var int): bool {.importc: "__builtin_smulll_overflow", nodecl, nosideeffect.}        
+        else:
+            {.error: "No matching __builtin_*_overflow for current platform int size.".}
+    else:
+        # see: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number/MAX_SAFE_INTEGER
+        func isSafeInteger*(a: int): bool {.importjs: "Number.isSafeInteger(#)".}
+        
+        func addIntWithOverflow*(a, b: int, res: var int): bool =
+            res = a + b
+            return not isSafeInteger(res)
+
+        func subIntWithOverflow*(a, b: int, res: var int): bool =
+            res = a - b
+            return not isSafeInteger(res)
+
+        func mulIntWithOverflow*(a, b: int, res: var int): bool =
+            res = a * b
+            return not isSafeInteger(res)
+
+#=======================================
+# Methods
+#=======================================
+
+when defined(WEB):
+    # `system.gcd` uses `shr` which becomes 32-bit `>>` on JS and loops forever for values above 2^31
+    func safeGcd*(a, b: int): int =
+        var x = abs(a)
+        var y = abs(b)
+        while y != 0:
+            let t = y
+            y = x mod y
+            x = t
+        x
+
+    func safeLcm*(a, b: int): int =
+        if a == 0 or b == 0: 0
+        else: (abs(a) div safeGcd(a, b)) * abs(b)
+else:
+    template safeGcd*(a, b: int): int = math.gcd(a, b)
+    template safeLcm*(a, b: int): int = math.lcm(a, b)
+
+func powIntWithOverflow*(a, b: int, res: var int): bool =
+    result = false
+    case b:
+        of 0: res = 1
+        of 1: res = a
+        of 2: result = mulIntWithOverflow(a, a, res)
+        of 3: 
+            result = mulIntWithOverflow(a, a, res)
+            if not result:
+                result = mulIntWithOverflow(a, res, res)
+        else:
+            var (x,y) = (a,b)
+            res = 1
+            while true:
+                if (y and 1) != 0:
+                    if mulIntWithOverflow(res, x, res):
+                        return true
+                y = y shr 1
+                if y == 0:
+                    break
+                if mulIntWithOverflow(x, x, x):
+                    return true
+
+# in-place
+
+func addIntWithOverflowI*(a, b: int, res: var int): bool {.inline, nosideeffect.} =
+    var subres: int
+    if unlikely(addIntWithOverflow(a, b, subres)):
+        return true
+    else:
+        res = subres
+        return false
+
+func subIntWithOverflowI*(a, b: int, res: var int): bool {.inline, nosideeffect.} =
+    var subres: int
+    if unlikely(subIntWithOverflow(a, b, subres)):
+        return true
+    else:
+        res = subres
+        return false
+
+func mulIntWithOverflowI*(a, b: int, res: var int): bool {.inline, nosideeffect.} =
+    var subres: int
+    if unlikely(mulIntWithOverflow(a, b, subres)):
+        return true
+    else:
+        res = subres
+        return false
+
+func powIntWithOverflowI*(a, b: int, res: var int): bool {.inline, nosideeffect.} =
+    var subres: int
+    if unlikely(powIntWithOverflow(a, b, subres)):
+        return true
+    else:
+        res = subres
+        return false

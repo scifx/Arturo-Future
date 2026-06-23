@@ -1,0 +1,15 @@
+#!/usr/bin/env arturo
+print
+    join.with:"\n"  
+        sort 
+            map select
+                    list.select:".art" "examples/rosetta/"
+                'x -> not? prefix? x "examples/rosetta/_" 
+            'item [
+                    "- [ ] " ++ capitalize 
+                                    replace 
+                                        replace item "examples/rosetta/" "" 
+                                    ".art" ""
+                
+            ]
+        

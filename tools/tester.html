@@ -1,0 +1,40 @@
+<html>
+    <head>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.3/css/bulma.min.css">
+        <script src="../bin/arturo.js"></script>
+    </head>
+    <body>
+        <section class="section" style="background: #EEE">
+            <div class="container has-text-centered">
+                <h1 class="title">
+                    Arturo.JS
+              </h1>
+              <p class="subtitle">
+                    Run Arturo <u>inside</u> the browser!
+              </p>
+            </div>
+        </section>
+        <section class="section">
+            <div class="container">
+                <div class="columns is-vcentered">
+                    <div class="column is-5">
+                        <textarea class="textarea is-medium is-info" id="code" rows="5"></textarea>
+                    </div>
+                    <div class="column is-2 has-text-centered">
+                        <a href="#" class="button is-info is-outlined" onclick="executeCode()"><b>Execute &gt;</b></a>
+                    </div>
+                    <div class="column is-5">
+                        <textarea class="textarea is-medium is-danger" id="result" rows="5" disabled></textarea>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <script>
+            function executeCode() {
+                var code = document.getElementById('code').value;
+                console.log(code);
+                document.getElementById('result').value = A$(code);
+            }
+        </script>
+    </body>
+</html>

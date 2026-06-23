@@ -1,0 +1,10 @@
+
+exe: switch sys\os = 'windows
+    -> "unitt.bat" 
+    -> "unitt"
+
+print list normalize ~"|path\home|/.arturo/packages/bin/"
+
+fullpath: normalize ~"|path\home|/.arturo/packages/bin/|exe|"
+code: execute.code.directly ~"|fullpath| --clean"
+panic.unstyled.code: code ""

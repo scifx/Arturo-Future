@@ -1,0 +1,35 @@
+import {unitt}!
+
+describe "Join Operations" [
+
+    it "join with words separates words by spaces" [
+        expects -> equal? "a b c" join.words ["a", "b", "c"]
+    ]
+
+    it "join with words is the same as join.with: ' ' separator" [
+        data: ["hello", "world"]
+        expects -> equal? (join.words data) (join.with: ' ' data)
+    ]
+
+    it "join with words on empty list returns empty string" [
+        expects -> equal? "" join.words []
+    ]
+
+]
+
+describe "Join Lines Operations" [
+
+    it "join with lines separates words by \\n" [
+        expects -> equal? "a\nb\nc" join.lines ["a", "b", "c"]
+    ]
+
+    it "join with lines is the same as join.with: '\\n' separator" [
+        data: ["hello", "world"]
+        expects -> equal? (join.lines data) (join.with: '\n' data)
+    ]
+
+    it "join with lines on empty list returns empty string" [
+        expects -> equal? "" join.lines []
+    ]
+
+]

@@ -1,0 +1,1 @@
+nim build.nim build --release --log

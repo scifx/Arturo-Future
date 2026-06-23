@@ -1,0 +1,1069 @@
+;; Library: Files -- https://arturo-lang.io/documentation/library/files/
+;;
+;; This file tests Arturo's Files Library
+;; for obvious reasons, bash is used as helper to this,
+;; doing functions independents of each other.
+
+
+topic: $[topic :string] [
+    print ""
+    print ~">> |topic|"
+    print ""
+]
+
+; inspect: $[T][
+;     print T
+;     print type T
+; ]
+
+createTempFolder: $[][
+    write.directory null "temp/"
+    print "Created: temp/"
+]
+
+createTestFolder: $[topic][
+    write.directory null ~"temp/|topic|"
+    return ~"temp/|topic|"
+]
+
+deleteTestFolder: $[][
+    delete.directory "temp/"
+    print "Removed: temp/"
+]
+
+
+createTempFolder
+
+; ---------------------------- Functions ----------------------------
+
+; -- Test: copy
+
+topic "copy"
+do [
+
+    dir: createTestFolder "copy"
+
+    write "Hello, world!" ~"|dir|/file.txt"
+    ensure -> exists? ~"|dir|/file.txt"
+
+    ; ---------//---------//---------//
+
+    copy ~"|dir|/file.txt" ~"|dir|/copied.txt"
+
+    list ~"|dir|"
+
+    ensure -> every? ["file", "copied"] 'file -> exists? ~"|dir|/|file|.txt"
+    print "copy is working well!"
+
+]
+
+
+topic "copy.directory - with empty folders"
+do [
+
+    dir: createTestFolder "copy-empty-dir"
+
+    folders: @["A" "B" "C"]
+    loop folders 'f -> write.directory null ~"|dir|/input/|f|"
+    write.directory null ~"|dir|/dest"
+
+    ensure -> every? folders 'f -> exists? ~"|dir|/input/|f|"
+    ensure -> exists? ~"|dir|/dest"
+
+    ; ---------//---------//---------//
+
+    copy.directory ~"|dir|/input" ~"|dir|/dest"
+
+    ensure -> every? folders 'f -> exists? ~"|dir|/dest/|f|"
+    print "copy empty directory is working well!"
+
+]
+
+topic "copy.directory - with filled folders"
+do [
+
+    dir: createTestFolder "copy-filled-dir"
+
+    folders: @["A" "B" "C"]
+    loop folders 'f -> write.directory null ~"|dir|/input/|f|"
+    loop folders 'f -> write "." ~"|dir|/input/|f|/file.txt"
+    write.directory null ~"|dir|/dest"
+
+    ensure -> every? folders 'f -> exists? ~"|dir|/input/|f|/file.txt"
+    ensure -> exists? ~"|dir|/dest"
+
+    ; ---------//---------//---------//
+
+    copy.directory ~"|dir|/input" ~"|dir|/dest"
+
+    ensure -> every? folders 'f -> exists? ~"|dir|/dest/|f|/file.txt"
+    print "copy filled directory is working well!"
+
+]
+
+
+; -- Test: delete
+
+topic "delete"
+do [
+
+    dir: createTestFolder "delete"
+
+    write "Hello, world!" ~"|dir|/file.txt"
+
+    ensure -> exists? ~"|dir|/file.txt"
+
+    ; ---------//---------//---------//
+
+    delete ~"|dir|/file.txt"
+
+    ensure -> not? exists? ~"|dir|/file.txt"
+    print "deleted"
+
+]
+
+topic "delete.directory - with empty folders"
+do [
+
+    dir: createTestFolder "delete-empty-folders"
+
+    folders: @["A" "B" "C"]
+    loop folders 'f -> write.directory null ~"|dir|/|f|"
+
+    ensure -> every? folders 'f
+        -> exists? ~"|dir|/|f|"
+
+    ; ---------//---------//---------//
+
+    loop folders 'f -> delete.directory ~"|dir|/|f|"
+    ensure -> every? folders 'f -> not? exists? ~"|dir|/|f|"
+    print "directories deleted!"
+
+]
+
+topic "delete.directory - with filled folders"
+do [
+
+    dir: createTestFolder "delete-filled-dir"
+
+    folders: @["A" "B" "C"]
+    loop folders 'f -> write.directory null ~"|dir|/|f|"
+    loop folders 'f -> write "." ~"|dir|/|f|/file.txt"
+
+    ensure -> every? folders 'f -> exists? ~"|dir|/|f|/file.txt"
+
+    ; ---------//---------//---------//
+
+    loop folders 'f -> delete.directory ~"|dir|/|f|"
+
+    ensure -> every? folders 'f -> not? exists? ~"|dir|/|f|/file.txt"
+    print "directories & files deleted!"
+
+]
+
+; -- Test: move
+
+topic "move"
+do [
+
+    dir: createTestFolder "move"
+
+    write.directory null ~"|dir|/dest"
+    write "Hello, world!" ~"|dir|/file.txt"
+
+    ensure -> exists? ~"|dir|/file.txt"
+    ensure -> not? exists? ~"|dir|/dest/file.txt"
+
+    ; ---------//---------//---------//
+
+    move ~"|dir|/file.txt" ~"|dir|/dest/file.txt"
+
+    ensure -> and? not? exists? ~"|dir|/file.txt"
+                   exists? ~"|dir|/dest/file.txt"
+    print "file.txt moved to dest/"
+
+]
+
+topic "move.directory - with empty folders"
+do [
+
+    dir: createTestFolder "move-empty-dir"
+
+    folders: @["A" "B" "C"]
+    loop folders 'f -> write.directory null ~"|dir|/input/|f|"
+    write.directory null ~"|dir|/dest"
+
+    ensure -> every? folders 'f
+    -> and?
+        exists? ~"|dir|/input/|f|"
+        not? exists? ~"|dir|/dest/|f|"
+
+    print "empty folders created inside input/"
+
+    ; ---------//---------//---------//
+
+    move.directory ~"|dir|/input" ~"|dir|/dest"
+
+    ensure -> not? exists? ~"|dir|/input"
+    ensure -> every? folders 'f
+    -> exists? ~"|dir|/dest/|f|"
+
+    print "empty folders moved to dest/"
+
+]
+
+
+topic "move.directory - with filled folders"
+do [
+
+    dir: createTestFolder "move-filled-dir"
+
+    folders: @["A" "B" "C"]
+    loop folders 'f -> write.directory null ~"|dir|/input/|f|"
+    loop folders 'f -> write "." ~"|dir|/input/|f|/file.txt"
+    write.directory null ~"|dir|/dest"
+
+    ensure -> every? folders 'f -> exists? ~"|dir|/input/|f|/file.txt"
+
+    ; ---------//---------//---------//
+
+    move.directory ~"|dir|/input" ~"|dir|/dest"
+
+    ensure -> not? exists? ~"|dir|/input"
+    ensure -> every? folders 'f
+    -> exists? ~"|dir|/dest/|f|/file.txt"
+
+    print "filled folders moved to dest/"
+
+]
+
+
+; -- Test: permissions
+
+;; permissions doesn't work as expected in different OSes
+; See https://github.com/arturo-lang/arturo/pull/1008#issuecomment-1450535386
+topic "permissions" ; do
+[
+
+    dir: createTestFolder "permissions"
+
+    write "Hello, world!" ~"|dir|/file.txt"
+    ensure -> exists? ~"|dir|/file.txt"
+
+    ; ---------//---------//---------//
+    inspect permissions ~"|dir|/file.txt"
+
+]
+
+
+;; Returns me a `SIGSEGV: Illegal storage access. (Attempt to read from nil?)`
+; topic "permissions.set"
+; do [
+;
+;     dir: createTestFolder "permissions-set"
+;
+;     write "Hello, world!" ~"|dir|/file.txt"
+;
+;     ; action
+;     permissions.set: #[others:#[write:false]] ~"|dir|/file.txt"
+;
+;     ; assertion
+;     inspect permissions ~"|dir|/file.txt"
+;
+;
+; ]
+
+; -- Test: read
+
+topic "read"
+do [
+
+    dir: createTestFolder "read"
+
+    write {
+        Hello, world
+        This is a multiline File.
+        :)
+    } ~"|dir|/test.txt"
+    ensure -> exists? ~"|dir|/test.txt"
+
+    ; ---------//---------//---------//
+
+    inspect read ~"|dir|/test.txt"
+
+]
+
+
+topic "read.lines"
+do [
+
+    dir: createTestFolder "read-lines"
+
+    write {
+        The Language
+        ------------------------------
+
+        Arturo is an independently-developed, modern programming language,
+        vaguely related to various other ones - including but not limited to:
+        Logo, Rebol, Forth, Ruby, Haskell, D, Smalltalk, Tcl, and Lisp.
+
+        The language has been designed
+        following some very simple and straightforward principles:
+
+        - Code is just a list of words, symbols and literal values
+        - Words and symbols within a block are interpreted - when needed -
+            according to the context
+        - No reserved words or keywords -
+            look for them as hard as you can; there are absolutely none
+    } ~"|dir|/test.txt"
+
+    ensure -> exists? ~"|dir|/test.txt"
+
+    ; ---------//---------//---------//
+
+    inspect read.lines ~"|dir|/test.txt"
+
+]
+
+topic "read.json"
+do [
+
+    dir: createTestFolder "read-json"
+
+    jsonSample: {
+        {
+            "name": "Arturo",
+            "version": "0.9.83",
+            "build": "b/12",
+            "platform": "amd/win10"
+        }
+    }
+
+    write jsonSample ~"|dir|/test.json"
+
+    ensure -> exists? ~"|dir|/test.json"
+
+    ; ---------//---------//---------//
+
+    inspect read.json jsonSample
+    ensure -> equal?
+        read.json jsonSample
+        read.json ~"|dir|/test.json"
+
+]
+
+topic "read.csv"
+do
+[
+
+    dir: createTestFolder "read-csv"
+
+    write {
+        language, version, platform
+        Arturo, 0.9.83, win10
+        Python, 3.9, gnu/linux
+        Ruby, 3.2.1, macOS
+    } ~"|dir|/test.csv"
+
+    ensure -> exists? ~"|dir|/test.csv"
+
+    ; ---------//---------//---------//
+
+    inspect read.csv ~"|dir|/test.csv"
+
+]
+
+topic "read.csv.delimiter"
+do
+[
+
+    dir: createTestFolder "read-csv-delimiter"
+
+    write {
+        language; version; platform
+        Arturo; 0.9.83; win10
+        Python; 3.9; gnu/linux
+        Ruby; 3.2.1; macOS
+    } ~"|dir|/test.csv"
+
+    ensure -> exists? ~"|dir|/test.csv"
+
+    ; ---------//---------//---------//
+
+    inspect read.csv.delimiter: ';' ~"|dir|/test.csv"
+
+]
+
+topic "read.csv.withHeaders"
+do [
+
+    dir: createTestFolder "read-csv-headers"
+
+    write {
+        language, version, platform
+        Arturo, 0.9.83, win10
+        Python, 3.9, gnu/linux
+        Ruby, 3.2.1, macOS
+    } ~"|dir|/test.csv"
+
+    ensure -> exists? ~"|dir|/test.csv"
+
+    ; ---------//---------//---------//
+
+    inspect read.csv.withHeaders ~"|dir|/test.csv"
+
+]
+
+topic "read.html" do
+[
+
+    dir: createTestFolder "read-html"
+
+    htmlSample: {
+        <!DOCTYPE html>
+        <html>
+        <body>
+            <h2>Unordered List with Square Bullets</h2>
+            <ul style="list-style-type:square;">
+                <li>Arturo</li>
+                <li>Python</li>
+                <li>Ruby</li>
+            </ul>
+            <p>
+                Hello
+                <br>
+                World
+            </p>
+        </body>
+        </html>
+    }
+
+    write htmlSample ~"|dir|/test.html" 
+
+    ensure -> exists? ~"|dir|/test.html"
+
+    ; ---------//---------//---------//
+
+    inspect read.html htmlSample
+    ensure -> equal?
+        read.html htmlSample
+        read.html ~"|dir|/test.html"
+
+    ; ---------//---------//---------//
+    ; lossless tree shape checks
+    ; ---------//---------//---------//
+
+    parsed: read.html htmlSample
+
+    ; helper to find first child element of `parent` with a given tag
+    findTag: function [parent t][
+        elems: select parent\children 'c -> c\kind = 'element
+        first select elems 'c -> c\tag = t
+    ]
+
+    ; top-level document node
+    ensure -> parsed\kind = 'document
+    ensure -> block? parsed\children
+
+    ; doctype preserved as the first non-whitespace child
+    doctypes: select parsed\children 'c -> c\kind = 'doctype
+    ensure -> 1 = size doctypes
+
+    ; drill into html -> body
+    htmlNode: findTag parsed "html"
+    ensure -> not? null? htmlNode
+    bodyNode: findTag htmlNode "body"
+    ensure -> not? null? bodyNode
+
+    ; helper to extract the text value of the first text-node child
+    firstText: function [node][
+        textKid: first node\children
+        textKid\value
+    ]
+
+    ; <h2> attrs + text content
+    h2: findTag bodyNode "h2"
+    ensure -> "Unordered List with Square Bullets" = firstText h2
+
+    ; <ul> attrs + three <li> element children
+    ul: findTag bodyNode "ul"
+    ensure -> "list-style-type:square;" = ul\attrs\style
+    liElems: select ul\children 'c -> c\kind = 'element
+    ensure -> 3 = size liElems
+    li0: first liElems
+    li1: liElems\1
+    li2: last liElems
+    ensure -> "Arturo" = firstText li0
+    ensure -> "Python" = firstText li1
+    ensure -> "Ruby"   = firstText li2
+
+    ; <p> preserves mixed content (text + <br> + text)
+    p: findTag bodyNode "p"
+    pKinds: map p\children 'c -> c\kind
+    ensure -> contains? pKinds 'text
+    ensure -> contains? pKinds 'element
+    ensure -> not? null? findTag p "br"
+
+    ; ---------//---------//---------//
+    ; comment node preserved
+    ; ---------//---------//---------//
+
+    withComment: read.html {<html><body><!-- hello --><p>x</p></body></html>}
+    html2: findTag withComment "html"
+    body2: findTag html2 "body"
+    commentNodes: select body2\children 'c -> c\kind = 'comment
+    ensure -> 1 = size commentNodes
+    cmt: first commentNodes
+    ensure -> " hello " = cmt\value
+
+]
+
+topic "read.xml" do
+[
+
+    dir: createTestFolder "read-xml"
+
+    xmlSample: {
+        <?xml version="1.0"?>
+        <languages>
+        <language id="art">
+            <name>Arturo Programming Language</name>
+            <author>Yanis Zafiropulos</author>
+            <category>Scripting and Concatenative</category>
+        </language>
+        <language id="py">
+            <name>CPython</name>
+            <author>Guido van Rossum</author>
+            <category>Scripting and Object Oriented</category>
+        </language>
+        <language id="rb">
+            <name>Ruby</name>
+            <author>Yukihiro Matsumoto</author>
+            <category>Scripting and Object Oriented</category>
+        </language>
+        </languages>
+    }
+
+    write xmlSample ~"|dir|/test.xml"
+
+    ensure -> exists? ~"|dir|/test.xml"
+
+    ; ---------//---------//---------//
+
+    inspect read.xml xmlSample
+    ensure -> equal?
+        read.xml xmlSample
+        read.xml ~"|dir|/test.xml"
+
+]
+
+topic "read.markdown" do
+[
+
+    dir: createTestFolder "read-md"
+
+    mdSample:  {
+        # Arturo Basics
+
+        > Arturo is a very simple language.
+        > Even without any prior experience,
+        > I estimate it would take you roughly half an hour
+        > before you are comfortable enough to write your first program.
+
+        ---
+
+        - [Library](https://arturo-lang.io/documentation/library)
+        - [Examples](https://arturo-lang.io/documentation/examples)
+
+        ## First Steps
+        1. [Main Components](https://arturo-lang.io/documentation/language/#the-main-components)
+        2. [Precedence & Evaluation](https://arturo-lang.io/documentation/language/#precedence-and-evaluation)
+        3. [Scope & Rules](https://arturo-lang.io/documentation/language/#scope-and-rules)
+
+    }
+
+    write mdSample ~"|dir|/test.md"
+
+    ensure -> exists? ~"|dir|/test.md"
+
+    ; ---------//---------//---------//
+
+    inspect read.markdown mdSample
+    ensure -> equal?
+        read.markdown mdSample
+        read.markdown ~"|dir|/test.md"
+
+]
+
+
+topic "read.toml" do
+ [
+
+    dir: createTestFolder "read-toml"
+
+    tomlSample: {
+        [arturo.package]
+        name = "TOML Reader"
+        description = "Yet another TOML Reader"
+        version = "1.0.1"
+        authors = ["author A", "author B"]
+        license = "MIT"
+
+        [arturo.config]
+        version = "^0.9"
+        pkg-manager = "^0.2"
+    }
+
+    write tomlSample ~"|dir|/test.toml"
+
+    ensure -> exists? ~"|dir|/test.toml"
+
+    ; ---------//---------//---------//
+
+    inspect read.toml tomlSample
+    ensure -> equal?
+        read.toml tomlSample
+        read.toml ~"|dir|/test.toml"
+
+]
+
+topic "read.toml -- from ini file" do
+[
+
+    dir: createTestFolder "read-ini"
+
+    iniSample: {
+        [package]
+        name = "TOML Reader"
+        description = "Yet another TOML Reader"
+        version = "1.0.1"
+        authors = ["author A", "author B"]
+        license = "MIT"
+
+        [config]
+        version = "^0.9"
+        pkg-manager = "^0.2"
+    }
+
+    write iniSample ~"|dir|/test.ini"
+
+    ensure -> exists? ~"|dir|/test.ini"
+
+    ; ---------//---------//---------//
+
+    inspect read.toml iniSample
+    ensure -> equal?
+        read.toml iniSample
+        read.toml ~"|dir|/test.ini"
+
+]
+
+;; This code breaks other tests. Why?
+;; And further, returns a :binary instead of :bytecode...
+; topic "read.bytecode"
+; do [
+;
+;     dir: createTestFolder "exists-dir"
+;
+;     code: [print 2 + 1]
+;     bcode: to :bytecode code
+;
+;     write.binary bcode "test.bcode"
+;     print type read.bytecode "test.bcode"
+;     ; :binary ??
+
+; ]
+
+topic "read.binary"
+do [
+
+    dir: createTestFolder "read-bin"
+    write {
+        Hello, World!
+    } ~"|dir|/test.bin"
+
+    ensure -> exists? ~"|dir|/test.bin"
+
+    ; ---------//---------//---------//
+
+    inspect read.binary ~"|dir|/test.bin"
+
+]
+
+topic "read.file"
+do [
+
+    dir: createTestFolder "read-file"
+
+    ensure -> not? exists? ~"|dir|/test.bin"
+
+    ; ---------//---------//---------//
+
+    inspect read ~"|dir|/test.bin"
+    ; temp/read-file/test.bin :string
+
+    if throws? -> inspect read.file ~"|dir|/test.bin"
+        -> print "error raised as expected!"
+        ; >> Runtime | File: lib.files.art
+        ; error | Line: 578
+        ;       |
+        ;       | file not found: temp/test.bin
+
+]
+
+; -- Test: rename
+
+topic "rename"
+do [
+
+    dir: createTestFolder "rename"
+    write "Hello, world!" ~"|dir|/file.txt"
+
+    ensure -> exists? ~"|dir|/file.txt"
+
+    ; ---------//---------//---------//
+
+    rename ~"|dir|/file.txt"  ~"|dir|/renamed.txt"
+
+    ensure -> not? exists? ~"|dir|/file.txt"
+    print ["file: " read.file ~"|dir|/renamed.txt"]
+
+]
+
+topic "rename.directory"
+do [
+
+    dir: createTestFolder "rename-dir"
+
+    write.directory null ~"|dir|/folder"
+    write "." ~"|dir|/folder/file.txt"
+
+    ensure -> exists? ~"|dir|/folder/file.txt"
+
+    ; ---------//---------//---------//
+
+    rename.directory ~"|dir|/folder" ~"|dir|/renamed"
+    ensure -> not? exists? ~"|dir|/folder/file.txt"
+    ensure -> exists? ~"|dir|/renamed/file.txt"
+
+    print "directory renamed"
+
+]
+
+; ; -- Test: symlink
+
+;; How can I properly test it?
+; topic "rename.directory"
+; do [
+;
+;     ; cleaning
+;     execute "rm temp/* --recursive"
+;
+; ]
+
+; -- Test: timestamp
+
+topic "timestamp"
+do [
+
+    dir: createTestFolder "timestamp"
+
+    write "Hello, world!" ~"|dir|/file.txt"
+
+    ensure -> exists? ~"|dir|/file.txt"
+
+    ; ---------//---------//---------//
+
+    a: timestamp ~"|dir|/file.txt"
+    ensure -> a\created
+    ensure -> a\accessed
+    ensure -> a\modified
+
+    print ~"all fields are filled: |keys a|"
+
+]
+
+; -- Test: zip & unzip
+
+topic "zip & unzip - README"
+do [
+
+    dir: createTestFolder "zip-unzip-readme"
+    zip ~"|dir|/dest.zip" ["README.md"]; takes from repository's root
+    ensure -> exists? ~"|dir|/dest.zip"
+
+    print "zipped as dest.zip"
+
+    unzip ~"|dir|" ~"|dir|/dest.zip"
+    ensure -> exists? ~"|dir|/README.md"
+
+    print "unzipped as README.md"
+
+]
+
+topic "zip & unzip - src/arturo.nim"
+;do
+[
+
+    dir: createTestFolder "zip-unzip-with-path"
+
+    ;; outputs me an empty .zip
+    zip ~"|dir|/dest.zip" [~"src/arturo.nim"]
+    ensure -> exists? ~"|dir|/dest.zip"
+    print "zipped as dest.zip"
+
+    ;; Tries to unzip an empty file
+    unzip ~"|dir|" ~"|dir|/dest.zip"
+    ensure -> exists? ~"|dir|/arturo.nim"
+
+    ;; >> Assertion | File: lib.files.art
+    ;;   error | Line: 647
+    ;;         |
+    ;;         | [exists? ~ "|dir|/arturo.nim"]
+
+
+    print "unzipped as arturo.nim"
+
+]
+
+topic "zip & unzip - destination"
+;do
+[
+
+    dir: createTestFolder "zip-unzip-file-dest"
+
+    write "Hello, world!" ~"|dir|/file.txt"
+    ensure -> exists? ~"|dir|/file.txt"
+
+    ;; outputs me an empty .zip
+    ; zip ~"|dir|/dest.zip" [~"|dir|/file.txt"]
+    ; ensure -> exists? ~"|dir|/dest.zip"
+    ; print "zipped as dest.zip"
+
+    ;; outputs me an empty .zip
+    ; file: ~"|dir|/file.txt"
+    ;
+    ; zip ~"|dir|/dest.zip" [file]
+    ; ensure -> exists? ~"|dir|/dest.zip"
+    ; print "zipped as dest.zip"
+
+    ;; outputs me an empty .zip
+    ; zip ~"|dir|/dest.zip" ["temp/zip-unzip-file-dest/file.txt"]
+    ; ensure -> exists? ~"|dir|/dest.zip"
+    ; print "zipped as dest.zip"
+
+    delete ~"|dir|/file.txt"
+    ensure -> not? exists? ~"|dir|/file.txt"
+    print "file.txt removed"
+
+    ;; Tries to unzip an empty file
+    unzip ~"|dir|" ~"|dir|/dest.zip"
+    ensure -> exists? ~"|dir|/file.txt"
+
+    print "unzipped! as file.txtt"
+    print ["content" read.file ~"|dir|/file.txt"]
+
+]
+
+;; Zip is not working for folders
+; topic "zip & unzip -- wit folders"
+; do [
+;     ; preparing
+;     execute "mkdir temp/folder{A,B,C}"
+;     execute "mkdir temp/folder{A,B,C}/{A,B,C}"
+;
+;     ; Using write because I can't redirect using `execute` function
+;     write "Hello, world!" "temp/folderA/A/file.txt"
+;     write "Hello, world!" "temp/folderB/B/file.txt"
+;     write "Hello, world!" "temp/folderC/C/file.txt"
+;     write "Hello, world!" "temp/folderA/file.txt"
+;     write "Hello, world!" "temp/file.txt"
+;
+;     ; 1st assertion
+;     print execute "ls temp/**"
+;
+;     ; zip's assertion
+;     print "Zipping..."
+;     zip "temp/dest.zip" ["temp/file.txt" "temp/folderA" "temp/folderB" "temp/folderC"]
+;     print execute "ls temp/**"
+;
+;     ; unzip's assertion
+;     print "Unzipping..."
+;     unzip "temp/" "temp/dest.zip"
+;     print execute "ls temp/**"
+;
+;     ; cleaning
+;     execute "rm temp/* --recursive"
+; ]
+
+
+; -- Test: volume
+
+topic "volume"
+do [
+
+    dir: createTestFolder "volume"
+
+    write "Hello, World!" ~"|dir|/test.bin"
+    ensure -> exists? ~"|dir|/test.bin"
+
+    ; ---------//---------//---------//
+
+    print volume ~"|dir|/test.bin"
+
+]
+
+; -- Test: write
+
+topic "write"
+do [
+
+    dir: createTestFolder "write"
+
+    write "Hello, world!" ~"|dir|/file.txt"
+    ensure -> exists? ~"|dir|/file.txt"
+
+    ; ---------//---------//---------//
+
+    print read.file ~"|dir|/file.txt"
+
+]
+
+topic "write.append"
+do [
+
+    dir: createTestFolder "write-append"
+
+    write "Hello, world!" ~"|dir|/file.txt"
+    ensure -> exists? ~"|dir|/file.txt"
+    print read ~"|dir|/file.txt"
+
+    ; ---------//---------//---------//
+
+    write.append "\nFrom Arturo's World!" ~"|dir|/file.txt"
+    print read.file ~"|dir|/file.txt"
+
+]
+
+topic "write.directory"
+do [
+
+    dir: createTestFolder "write-dir"
+
+    ; ---------//---------//---------//
+
+    write.directory null ~"|dir|/folder"
+    write.directory null ~"|dir|/directory"
+
+    ensure -> exists? ~"|dir|/folder"
+    ensure -> exists? ~"|dir|/directory"
+
+    print "passed!"
+
+]
+
+topic "write.json"
+do [
+
+    dir: createTestFolder "write-json"
+
+    write.json #[
+        name: "Arturo",
+        version: 1.9.83,
+        build: "b/12",
+        platform: "amd/win10"
+    ] ~"|dir|/file.json"
+
+    print read.file ~"|dir|/file.json"
+
+]
+
+
+topic "write.json.compact"
+do [
+
+    dir: createTestFolder "write-c-json"
+
+    write.json.compact #[
+        name: "Arturo",
+        version: 1.9.83,
+        build: "b/12",
+        platform: "amd/win10"
+    ] ~"|dir|/file.json"
+
+    print read.file ~"|dir|/file.json"
+
+]
+
+topic "write.binary"
+do [
+
+    dir: createTestFolder "write-bin"
+
+    write.binary "Hello, world!" ~"|dir|/file.bin"
+    print read.file ~"|dir|/file.bin"
+
+]
+
+; -- Test: exists?
+
+topic "exists?"
+do [
+
+    dir: createTestFolder "exists"
+
+    if not? exists? ~"|dir|/file.txt" [
+        print "file does not exist"
+    ]
+
+    write "Hello, world!" ~"|dir|/file.txt"
+
+    if exists? ~"|dir|/file.txt" [
+        print "file exists"
+    ]
+
+]
+
+topic "directory?"
+do [
+
+    dir: createTestFolder "exists-dir"
+
+    if not? directory? ~"|dir|/dir" [
+        print "directory does not exist"
+    ]
+
+    write.directory null ~"|dir|/dir"
+
+    if directory? ~"|dir|/dir" [
+        print "directory exists"
+    ]
+
+]
+
+; -- hidden?
+
+topic "hidden?"
+do [
+
+    ;; Since just `.git` is considered hidden in windows
+    ;; and every folder/file that starts with `.` is considered hidden
+    (sys\os = 'windows)? [
+        if and?
+            hidden? ".git"
+            every? ["README.md" "src" ".gitignore" ".cache" ".github"]
+                'f -> not? hidden? f
+        ->
+            print "passed!"
+    ][
+        if and?
+            every? ["README.md" "src"] 'f -> not? hidden? f
+            every? [".gitignore" ".cache" ".github"] 'f -> hidden? f
+        ->
+            print "passed!"
+    ]
+
+]
+
+; ---- Finish
+do -> deleteTestFolder
