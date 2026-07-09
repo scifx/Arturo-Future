@@ -110,6 +110,8 @@ proc configPlatform() =
     else:
         --passL:"-lm"
         --passL:"-pthread"
+        --passL:"-landroid-spawn"
+        --passL:"-landroid"
 
 #=======================================
 # Main 

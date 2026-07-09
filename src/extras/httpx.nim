@@ -553,9 +553,11 @@ proc eventLoop(params: (OnRequest, Settings, ThreadVars)) =
     selector.registerHandle(server.getFd, {Event.Read}, initData(Server))
 
     when httpxSendServerDate:
-        # Set up timer to get current date/time.
+        # Update date immediately and track for periodic updates
+        # NOTE: We avoid asyncdispatch.addTimer here for better portability
+        # (e.g. Android/Termux where ioselectors timer support may be absent)
+        var lastDateUpdate = getMonoTime()
         discard updateDate(0.AsyncFD)
-        asyncdispatch.addTimer(1000, false, updateDate)
 
     let disp = getGlobalDispatcher()
 
@@ -565,7 +567,8 @@ proc eventLoop(params: (OnRequest, Settings, ThreadVars)) =
 
         var events: array[64, ReadyKey]
         while true:
-            let ret = selector.selectInto(-1, events)
+            let pollTimeout = when httpxSendServerDate: 1000 else: -1
+            let ret = selector.selectInto(pollTimeout, events)
             processEvents(selector, events, ret, onRequest)
 
             # Ensure callbacks list doesn't grow forever in asyncdispatch.
@@ -574,6 +577,13 @@ proc eventLoop(params: (OnRequest, Settings, ThreadVars)) =
             # lost!
             if unlikely(disp.callbacks.len > 0):
                 asyncdispatch.poll(0)
+
+            # Periodically update the server date without asyncdispatch.addTimer
+            when httpxSendServerDate:
+                let nowT = getMonoTime()
+                if (nowT - lastDateUpdate).inMilliseconds >= 1000:
+                    lastDateUpdate = nowT
+                    discard updateDate(0.AsyncFD)
     else:
         var events: array[64, ReadyKey]
         while true:
@@ -585,6 +595,13 @@ proc eventLoop(params: (OnRequest, Settings, ThreadVars)) =
             if ret > 0:
                 processEvents(selector, events, ret, onRequest)
             asyncdispatch.poll(0)
+
+            # Periodically update the server date without asyncdispatch.addTimer
+            when httpxSendServerDate:
+                let nowT = getMonoTime()
+                if (nowT - lastDateUpdate).inMilliseconds >= 1000:
+                    lastDateUpdate = nowT
+                    discard updateDate(0.AsyncFD)
 
     if threadVars.event.isSome():
         threadVars.event.get().trigger()
