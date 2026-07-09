@@ -1,0 +1,48 @@
+; custom sanity checks for iterator/generator runtime
+
+ensure [equal? to :block to :iterator 1..5 [1 2 3 4 5]]
+ensure [equal? to :block to :iterator "abc" ['a' 'b' 'c']]
+ensure [equal? to :block to :iterator #[a:1 b:2] ["a" 1 "b" 2]]
+
+it: to :iterator 1..3
+ensure [equal? peek it 1]
+ensure [not? empty? it]
+ensure [equal? next it 1]
+ensure [equal? next it 2]
+rewind it
+ensure [equal? to :block it [1 2 3]]
+
+it2: to :iterator 3..4
+ensure [not? empty? it2]
+ensure [equal? first it2 3]
+
+evens: generator [n] [
+    loop 1..n 'i [
+        if even? i -> yield i
+    ]
+]
+
+ensure [equal? to :block call 'evens [10] [2 4 6 8 10]]
+ensure [equal? to :block call 'evens [6] [2 4 6]]
+
+piped: to :iterator 1..5 | map.iterator 'x [ inc x ]
+ensure [equal? next piped 2]
+ensure [equal? next piped 3]
+ensure [equal? to :block piped [4 5 6]]
+
+nums: generator [] [
+    loop 0..9 'i [yield i]
+]
+
+ensure [equal? take call 'nums [] 4 [0 1 2 3]]
+
+mstream: to :iterator 1..4 | map.iterator 'x -> x*x
+ensure [equal? to :block mstream [1 4 9 16]]
+
+sstream: to :iterator 1..6 | select.iterator 'x -> odd? x
+ensure [equal? to :block sstream [1 3 5]]
+
+fstream: to :iterator 1..6 | filter.iterator 'x -> odd? x
+ensure [equal? to :block fstream [2 4 6]]
+
+print "ok"

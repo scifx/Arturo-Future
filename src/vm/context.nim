@@ -35,6 +35,7 @@ type
         dictSyms*: seq[ValueDict]
         scopeStack*: seq[SymTable]
         cancelRequested*: bool      ## flipped by `cancel`; checked at each yield
+        generatorId*: string        ## non-empty while executing inside a generator-backed iterator
 
 #=======================================
 # Methods
@@ -48,7 +49,8 @@ proc newVMContext*(parentSyms: SymTable): VMContext =
         syms: parentSyms,
         dictSyms: @[],
         scopeStack: @[],
-        cancelRequested: false
+        cancelRequested: false,
+        generatorId: ""
     )
     newSeq(result.stack, StackSize)
 

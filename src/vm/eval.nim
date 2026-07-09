@@ -21,7 +21,7 @@
 
 import hashes, sugar, tables
 
-import vm/[ast, bytecode, values/value]
+import vm/[ast, bytecode, errors, values/value]
 import vm/values/custom/[vbinary, vlogical]
 
 import vm/profiler
@@ -323,6 +323,19 @@ template optimizeConditional(
     # let's keep some references
     # to the children
     let cleanedChildren = cleanChildren(special)
+
+    let requiredChildren =
+        when isSwitch: 3
+        else: 2
+
+    if cleanedChildren.len < requiredChildren:
+        let builtinName =
+            if special.op != opNop:
+                stringify(special.op)
+            else:
+                "conditional"
+        Error_NotEnoughArguments(builtinName, requiredChildren)
+
     let left {.cursor.} = cleanedChildren[0]
     let right {.cursor.} = cleanedChildren[1]
 

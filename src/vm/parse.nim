@@ -30,7 +30,7 @@ import lexbase, os, streams
 import strutils, tables, unicode
 
 import vm/[errors, values/value]
-import vm/values/custom/[vquantity, vsymbol]
+import vm/values/custom/[verror, vquantity, vsymbol]
 
 import helpers/strings
 

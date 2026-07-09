@@ -25,6 +25,7 @@ when not defined(WEB):
 import algorithm, tables
 
 when not defined(WEB):
+    import helpers/iteratorstate
     import helpers/repl
     import helpers/stores
 
@@ -279,6 +280,16 @@ proc defineModule*(moduleName: string) =
         returns     = {Nothing},
         example     = """
             print "Hello world!"          ; Hello world!
+            ..........
+            print.lines [1 2 3]
+            ; 1
+            ; 2
+            ; 3
+            ..........
+            print.lines map.iterator 1..3 'x -> x+1
+            ; 2
+            ; 3
+            ; 4
         """:
             #=======================================================
             if xKind==Block:
@@ -301,6 +312,15 @@ proc defineModule*(moduleName: string) =
                     else: stdout.write("\n")
 
                 if not inLines: stdout.write("\n")
+                stdout.flushFile()
+            elif xKind==Object and hadAttr("lines") and isIteratorObject(x):
+                when defined(WEB):
+                    stdout = ""
+
+                var item: Value
+                while nextIteratorValue(x, item):
+                    stdout.write($(item))
+                    stdout.write("\n")
                 stdout.flushFile()
             else:
                 echo $(x)

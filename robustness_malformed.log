@@ -1,0 +1,232 @@
+[r01:001] OK :: if
+[r01:002] OK :: unless
+[r01:003] OK :: while
+[r01:004] OK :: switch
+[r01:005] OK :: if 1
+[r01:006] OK :: unless 1
+[r01:007] OK :: while [1]
+[r01:008] OK :: switch 1
+[r01:009] OK :: [
+[r01:010] OK :: (
+[r01:011] OK :: {
+[r01:012] OK :: "
+[r01:013] OK :: do [
+[r01:014] OK :: map [1 2 3] [
+[r01:015] OK :: read.buffer "nope.txt"
+[r01:016] OK :: read.buffer:0 "nope.txt"
+[r01:017] OK :: write.buffer:0 "abc" "x.txt"
+[r01:018] OK :: seek 123 4
+[r01:019] OK :: tell 123
+[r01:020] OK :: seek.relative 123 4
+[r01:021] OK :: seek.end 123 4
+[r01:022] OK :: read.buffer:4.seek:neg 1 "x.txt"
+[r01:023] OK :: write.buffer:4.seek:neg 1 "abc" "x.txt"
+[r02:024] OK :: if
+[r02:025] OK :: unless
+[r02:026] OK :: while
+[r02:027] OK :: switch
+[r02:028] OK :: if 1
+[r02:029] OK :: unless 1
+[r02:030] OK :: while [1]
+[r02:031] OK :: switch 1
+[r02:032] OK :: [
+[r02:033] OK :: (
+[r02:034] OK :: {
+[r02:035] OK :: "
+[r02:036] OK :: do [
+[r02:037] OK :: map [1 2 3] [
+[r02:038] OK :: read.buffer "nope.txt"
+[r02:039] OK :: read.buffer:0 "nope.txt"
+[r02:040] OK :: write.buffer:0 "abc" "x.txt"
+[r02:041] OK :: seek 123 4
+[r02:042] OK :: tell 123
+[r02:043] OK :: seek.relative 123 4
+[r02:044] OK :: seek.end 123 4
+[r02:045] OK :: read.buffer:4.seek:neg 1 "x.txt"
+[r02:046] OK :: write.buffer:4.seek:neg 1 "abc" "x.txt"
+[r03:047] OK :: if
+[r03:048] OK :: unless
+[r03:049] OK :: while
+[r03:050] OK :: switch
+[r03:051] OK :: if 1
+[r03:052] OK :: unless 1
+[r03:053] OK :: while [1]
+[r03:054] OK :: switch 1
+[r03:055] OK :: [
+[r03:056] OK :: (
+[r03:057] OK :: {
+[r03:058] OK :: "
+[r03:059] OK :: do [
+[r03:060] OK :: map [1 2 3] [
+[r03:061] OK :: read.buffer "nope.txt"
+[r03:062] OK :: read.buffer:0 "nope.txt"
+[r03:063] OK :: write.buffer:0 "abc" "x.txt"
+[r03:064] OK :: seek 123 4
+[r03:065] OK :: tell 123
+[r03:066] OK :: seek.relative 123 4
+[r03:067] OK :: seek.end 123 4
+[r03:068] OK :: read.buffer:4.seek:neg 1 "x.txt"
+[r03:069] OK :: write.buffer:4.seek:neg 1 "abc" "x.txt"
+[r04:070] OK :: if
+[r04:071] OK :: unless
+[r04:072] OK :: while
+[r04:073] OK :: switch
+[r04:074] OK :: if 1
+[r04:075] OK :: unless 1
+[r04:076] OK :: while [1]
+[r04:077] OK :: switch 1
+[r04:078] OK :: [
+[r04:079] OK :: (
+[r04:080] OK :: {
+[r04:081] OK :: "
+[r04:082] OK :: do [
+[r04:083] OK :: map [1 2 3] [
+[r04:084] OK :: read.buffer "nope.txt"
+[r04:085] OK :: read.buffer:0 "nope.txt"
+[r04:086] OK :: write.buffer:0 "abc" "x.txt"
+[r04:087] OK :: seek 123 4
+[r04:088] OK :: tell 123
+[r04:089] OK :: seek.relative 123 4
+[r04:090] OK :: seek.end 123 4
+[r04:091] OK :: read.buffer:4.seek:neg 1 "x.txt"
+[r04:092] OK :: write.buffer:4.seek:neg 1 "abc" "x.txt"
+[r05:093] OK :: if
+[r05:094] OK :: unless
+[r05:095] OK :: while
+[r05:096] OK :: switch
+[r05:097] OK :: if 1
+[r05:098] OK :: unless 1
+[r05:099] OK :: while [1]
+[r05:100] OK :: switch 1
+[r05:101] OK :: [
+[r05:102] OK :: (
+[r05:103] OK :: {
+[r05:104] OK :: "
+[r05:105] OK :: do [
+[r05:106] OK :: map [1 2 3] [
+[r05:107] OK :: read.buffer "nope.txt"
+[r05:108] OK :: read.buffer:0 "nope.txt"
+[r05:109] OK :: write.buffer:0 "abc" "x.txt"
+[r05:110] OK :: seek 123 4
+[r05:111] OK :: tell 123
+[r05:112] OK :: seek.relative 123 4
+[r05:113] OK :: seek.end 123 4
+[r05:114] OK :: read.buffer:4.seek:neg 1 "x.txt"
+[r05:115] OK :: write.buffer:4.seek:neg 1 "abc" "x.txt"
+[r06:116] OK :: if
+[r06:117] OK :: unless
+[r06:118] OK :: while
+[r06:119] OK :: switch
+[r06:120] OK :: if 1
+[r06:121] OK :: unless 1
+[r06:122] OK :: while [1]
+[r06:123] OK :: switch 1
+[r06:124] OK :: [
+[r06:125] OK :: (
+[r06:126] OK :: {
+[r06:127] OK :: "
+[r06:128] OK :: do [
+[r06:129] OK :: map [1 2 3] [
+[r06:130] OK :: read.buffer "nope.txt"
+[r06:131] OK :: read.buffer:0 "nope.txt"
+[r06:132] OK :: write.buffer:0 "abc" "x.txt"
+[r06:133] OK :: seek 123 4
+[r06:134] OK :: tell 123
+[r06:135] OK :: seek.relative 123 4
+[r06:136] OK :: seek.end 123 4
+[r06:137] OK :: read.buffer:4.seek:neg 1 "x.txt"
+[r06:138] OK :: write.buffer:4.seek:neg 1 "abc" "x.txt"
+[r07:139] OK :: if
+[r07:140] OK :: unless
+[r07:141] OK :: while
+[r07:142] OK :: switch
+[r07:143] OK :: if 1
+[r07:144] OK :: unless 1
+[r07:145] OK :: while [1]
+[r07:146] OK :: switch 1
+[r07:147] OK :: [
+[r07:148] OK :: (
+[r07:149] OK :: {
+[r07:150] OK :: "
+[r07:151] OK :: do [
+[r07:152] OK :: map [1 2 3] [
+[r07:153] OK :: read.buffer "nope.txt"
+[r07:154] OK :: read.buffer:0 "nope.txt"
+[r07:155] OK :: write.buffer:0 "abc" "x.txt"
+[r07:156] OK :: seek 123 4
+[r07:157] OK :: tell 123
+[r07:158] OK :: seek.relative 123 4
+[r07:159] OK :: seek.end 123 4
+[r07:160] OK :: read.buffer:4.seek:neg 1 "x.txt"
+[r07:161] OK :: write.buffer:4.seek:neg 1 "abc" "x.txt"
+[r08:162] OK :: if
+[r08:163] OK :: unless
+[r08:164] OK :: while
+[r08:165] OK :: switch
+[r08:166] OK :: if 1
+[r08:167] OK :: unless 1
+[r08:168] OK :: while [1]
+[r08:169] OK :: switch 1
+[r08:170] OK :: [
+[r08:171] OK :: (
+[r08:172] OK :: {
+[r08:173] OK :: "
+[r08:174] OK :: do [
+[r08:175] OK :: map [1 2 3] [
+[r08:176] OK :: read.buffer "nope.txt"
+[r08:177] OK :: read.buffer:0 "nope.txt"
+[r08:178] OK :: write.buffer:0 "abc" "x.txt"
+[r08:179] OK :: seek 123 4
+[r08:180] OK :: tell 123
+[r08:181] OK :: seek.relative 123 4
+[r08:182] OK :: seek.end 123 4
+[r08:183] OK :: read.buffer:4.seek:neg 1 "x.txt"
+[r08:184] OK :: write.buffer:4.seek:neg 1 "abc" "x.txt"
+[r09:185] OK :: if
+[r09:186] OK :: unless
+[r09:187] OK :: while
+[r09:188] OK :: switch
+[r09:189] OK :: if 1
+[r09:190] OK :: unless 1
+[r09:191] OK :: while [1]
+[r09:192] OK :: switch 1
+[r09:193] OK :: [
+[r09:194] OK :: (
+[r09:195] OK :: {
+[r09:196] OK :: "
+[r09:197] OK :: do [
+[r09:198] OK :: map [1 2 3] [
+[r09:199] OK :: read.buffer "nope.txt"
+[r09:200] OK :: read.buffer:0 "nope.txt"
+[r09:201] OK :: write.buffer:0 "abc" "x.txt"
+[r09:202] OK :: seek 123 4
+[r09:203] OK :: tell 123
+[r09:204] OK :: seek.relative 123 4
+[r09:205] OK :: seek.end 123 4
+[r09:206] OK :: read.buffer:4.seek:neg 1 "x.txt"
+[r09:207] OK :: write.buffer:4.seek:neg 1 "abc" "x.txt"
+[r10:208] OK :: if
+[r10:209] OK :: unless
+[r10:210] OK :: while
+[r10:211] OK :: switch
+[r10:212] OK :: if 1
+[r10:213] OK :: unless 1
+[r10:214] OK :: while [1]
+[r10:215] OK :: switch 1
+[r10:216] OK :: [
+[r10:217] OK :: (
+[r10:218] OK :: {
+[r10:219] OK :: "
+[r10:220] OK :: do [
+[r10:221] OK :: map [1 2 3] [
+[r10:222] OK :: read.buffer "nope.txt"
+[r10:223] OK :: read.buffer:0 "nope.txt"
+[r10:224] OK :: write.buffer:0 "abc" "x.txt"
+[r10:225] OK :: seek 123 4
+[r10:226] OK :: tell 123
+[r10:227] OK :: seek.relative 123 4
+[r10:228] OK :: seek.end 123 4
+[r10:229] OK :: read.buffer:4.seek:neg 1 "x.txt"
+[r10:230] OK :: write.buffer:4.seek:neg 1 "abc" "x.txt"
+
+ALL_ROBUSTNESS_CASES_OK

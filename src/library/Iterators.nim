@@ -35,6 +35,7 @@ when not defined(WEB):
     import vm/values/custom/[vtask, verror]
 
 import helpers/dictionaries
+import helpers/iteratorstate
 import helpers/objects
 import helpers/ranges
 
@@ -310,6 +311,117 @@ template iterateBlockWithParams(
     finalizeLeakless()
 
 #---------------------------------------
+# Iterator-object loop primitives
+#---------------------------------------
+
+template iterateIteratorWithLiteral(
+    itr: Value,
+    lit: string,
+    cap: bool,
+    doAction: untyped
+) {.dirty.} =
+    prepareLeaklessOne(lit)
+
+    when cap:
+        var captured: Value
+
+    var keepGoing {.inject, used.}: bool = true
+    var indx = 0
+    var run = 0
+    var iterValue: Value
+    while keepGoing and nextIteratorValue(itr, iterValue):
+        handleBranching:
+            when cap:
+                captured = iterValue
+                Syms[lit] = captured
+            else:
+                Syms[lit] = iterValue
+
+            execUnscoped(preevaled)
+            doAction
+        do:
+            run += 1
+            inc indx
+
+    finalizeLeaklessOne()
+
+template iterateIteratorWithParams(
+    itr: Value,
+    prm: seq[string],
+    rll: bool,
+    idx: bool,
+    cap: bool,
+    doAction: untyped
+) {.dirty.} =
+    prepareLeakless(prm)
+
+    let argsLen =
+        if idx: prm.len-1
+        else: prm.len
+
+    var loopStep =
+        if argsLen == 0: 1
+        else: argsLen
+
+    when rll:
+        if loopStep > 1:
+            loopStep -= 1
+
+    when cap:
+        var captured: ValueArray
+
+    var keepGoing {.inject, used.}: bool = true
+    var indx = 0
+    var run = 0
+    while keepGoing:
+        var chunk: ValueArray = @[]
+        var item: Value
+        var fetched = 0
+
+        while fetched < loopStep and nextIteratorValue(itr, item):
+            chunk.add(item)
+            inc fetched
+
+        if fetched < loopStep:
+            break
+
+        when cap:
+            captured = chunk
+
+        var ip = 0
+        if idx:
+            Syms[prm[ip]] = Value(kind: Integer, iKind: NormalInteger, i: run)
+            inc ip
+
+        when rll:
+            if not rollingRight:
+                Syms[prm[ip]] = res
+                inc ip
+
+        if argsLen > 0:
+            when cap:
+                for capt in captured:
+                    Syms[prm[ip]] = capt
+                    inc ip
+            else:
+                for current in chunk:
+                    Syms[prm[ip]] = current
+                    inc ip
+
+        when rll:
+            if rollingRight:
+                Syms[prm[ip]] = res
+
+        handleBranching:
+            execUnscoped(preevaled)
+            doAction
+        do:
+            run += 1
+            indx += loopStep
+
+    finalizeLeakless()
+
+#---------------------------------------
 # Iteration setup
 #---------------------------------------
 
@@ -421,6 +533,34 @@ template iterateBlock(withCap:bool, withInf:bool, withCounter:bool, rolling:bool
     else:
         fetchParamsBlock()
         iterateBlockWithParams(blo, params, rolling, hasIndex, cap=withCap, inf=withInf):
+            act
+            when withCounter:
+                cntr += 1
+        when withCounter:
+            res.setLen(cntr)
+
+template iterateIterator(withCap:bool, withCounter:bool, rolling:bool, act: untyped) {.dirty.} =
+    ## Main iteration helper for `:iterator` prototype objects.
+    when withCounter:
+        var cntr = 0
+
+    if likely(yKind==Literal):
+        if likely(not hasIndex):
+            iterateIteratorWithLiteral(iterable, y.s, cap=withCap):
+                act
+                when withCounter:
+                    cntr += 1
+        else:
+            let params = @[withIndex.s, y.s]
+            iterateIteratorWithParams(iterable, params, rolling, hasIndex, cap=withCap):
+                act
+                when withCounter:
+                    cntr += 1
+            when withCounter:
+                res.setLen(cntr)
+    else:
+        fetchParamsBlock()
+        iterateIteratorWithParams(iterable, params, rolling, hasIndex, cap=withCap):
             act
             when withCounter:
                 cntr += 1
@@ -609,12 +749,128 @@ template runParallelBranch(
         if not aParallel.isNil:
             if aParallel.kind notin tParallel:
                 Error_OperationNotPermitted("`.parallel` expects a logical flag or a positive integer")
+            if iteratorMode:
+                Error_OperationNotPermitted("`.parallel` is not supported for :iterator sources yet; iterate synchronously or materialize first")
             fetchIterableItemsForParallel(itDefVal)
             parallelInit
             parallelIterateBlock(withCap=itCap, withCounter=itCounter):
                 parallelAct
             parallelPost
             return
+
+type
+    LazyIteratorMode = enum
+        limMap
+        limSelect
+        limFilter
+
+proc lazyParamNames(paramSpec: Value): seq[string] =
+    case paramSpec.kind:
+        of Literal, Word:
+            result.add(paramSpec.s)
+        of Block:
+            for item in paramSpec.a:
+                if item.kind notin {Literal, Word}:
+                    Error_OperationNotPermitted("Lazy iterator params must be literal or word values")
+                result.add(item.s)
+        of Null:
+            discard
+        else:
+            discard
+
+proc lazyChunkSize(paramSpec: Value): int =
+    result = lazyParamNames(paramSpec).len
+    if result == 0:
+        result = 1
+
+proc newLazyIterator*(
+    source: Value,
+    paramSpec: Value,
+    body: Value,
+    withIndex: Value,
+    mode: LazyIteratorMode
+): Value =
+    let sourceName =
+        case mode:
+            of limMap:    "map"
+            of limSelect: "select"
+            of limFilter: "filter"
+
+    let src = source
+    let rawBody = body
+    let names = lazyParamNames(paramSpec)
+    let chunkSize = lazyChunkSize(paramSpec)
+    let hasIndex = not withIndex.isNil
+
+    var run = 0
+    var pending: ValueArray
+    var pendingIndex = 0
+
+    result = newPullIterator(sourceName, nil,
+        proc(value: var Value): bool =
+            while true:
+                if pendingIndex < pending.len:
+                    value = pending[pendingIndex]
+                    inc pendingIndex
+                    return true
+
+                pending.setLen(0)
+                pendingIndex = 0
+
+                var chunk: ValueArray
+                var item: Value
+                var fetched = 0
+                while fetched < chunkSize and nextIteratorValue(src, item):
+                    chunk.add(item)
+                    inc fetched
+
+                if fetched < chunkSize:
+                    value = VNULL
+                    return false
+
+                var protectedNames: seq[string]
+                if hasIndex:
+                    protectedNames.add(withIndex.s)
+                for name in names:
+                    protectedNames.add(name)
+
+                prepareLeakless(protectedNames)
+                defer: finalizeLeakless()
+
+                var ip = 0
+                if hasIndex:
+                    Syms[withIndex.s] = newInteger(run)
+
+                for name in names:
+                    Syms[name] = chunk[ip]
+                    inc ip
+
+                let preSP = SP
+                let preevaled = evalOrGet(rawBody)
+                execUnscoped(preevaled)
+                var bodyResult = VNULL
+                if SP > preSP:
+                    bodyResult = stack.pop()
+                if SP > preSP:
+                    SP = preSP
+
+                inc run
+
+                case mode:
+                    of limMap:
+                        pending.add(bodyResult)
+                    of limSelect:
+                        if isTrue(bodyResult):
+                            pending = chunk
+                    of limFilter:
+                        if isFalse(bodyResult):
+                            pending = chunk
+
+                if pending.len > 0:
+                    value = pending[0]
+                    pendingIndex = 1
+                    return true
+    )
 
 template doIterate(
     caps: static set[IterCap],  # iteration capability flags (compile-time)
@@ -633,6 +889,7 @@ template doIterate(
     const itRolling {.used.} = IsRolling   in caps
 
     prepareIteration(doesAcceptLiterals=itLit)
+    let iteratorMode {.inject, used.} = isIteratorObject(iterable)
 
     when not defined(WEB):
         when declared(aParallel):
@@ -650,7 +907,32 @@ template doIterate(
             do:
                 itPost
 
-    if iterable.kind==Range:
+    if iteratorMode:
+        if itInf:
+            Error_OperationNotPermitted("This operation does not support `:iterator` sources in infinite mode yet")
+
+        var firstIterElem: Value = VNULL
+        let iteratorHasValues = peekIteratorValue(iterable, firstIterElem)
+        if not iteratorHasValues and (when declared(hasSeed): not hasSeed else: true):
+            when not (itDefVal is typeof(nil)):
+                pushResult(itDefVal)
+            return
+
+        let sourceLen {.inject, used.} = iteratorRemainingHint(iterable)
+        template reverseSrc() {.inject, used.} =
+            Error_OperationNotPermitted("This iterator operation requires reversal/random-access; materialize it first")
+        template tailFrom(idx: int): ValueArray {.inject, used.} =
+            Error_OperationNotPermitted("This iterator operation requires tail slicing; materialize it first")
+            newSeq[Value](0)
+        template firstSrcElem(): Value {.inject, used.} =
+            firstIterElem
+
+        itPre
+        iterateIterator(withCap=itCap, withCounter=itCounter, rolling=itRolling):
+            itAct
+
+        itPost
+    elif iterable.kind==Range:
         fetchIterableRange()
         let sourceLen {.inject, used.} = rang.len
         template reverseSrc() {.inject, used.} =
@@ -691,6 +973,307 @@ proc defineModule*(moduleName: string) =
     #----------------------------
     # Functions
     #----------------------------
+
+    builtin "yield",
+        alias       = unaliased,
+        op          = opNop,
+        rule        = PrefixPrecedence,
+        description = "emit one value from inside a generator body",
+        args        = {
+            "value" : {Any}
+        },
+        attrs       = NoAttrs,
+        returns     = {Nothing},
+        example     = """
+            odds: generator [n] [
+                loop 1..n 'i [
+                    if odd? i -> yield i
+                ]
+            ]
+        """:
+            #=======================================================
+            yieldFromCurrentGenerator(x)
+
+    builtin "__generatorMake",
+        alias       = unaliased,
+        op          = opNop,
+        rule        = PrefixPrecedence,
+        description = "internal helper for generator invocation",
+        args        = {
+            "arguments" : {Block},
+            "body"      : {Block}
+        },
+        attrs       = NoAttrs,
+        returns     = {Object},
+        example     = "":
+            #=======================================================
+            var paramNames: seq[string]
+            for item in x.a:
+                requireValue(item, {Literal, Word})
+                paramNames.add(item.s)
+
+            var bindings: ValueArray
+            for name in paramNames:
+                bindings.add(newLabel(name))
+                bindings.add(copyValue(FetchSym(name)))
+
+            let bodyValues = y.a
+            let bodyBuilder = proc(): Value =
+                if bindings.len == 0:
+                    var fresh: ValueArray
+                    for item in bodyValues:
+                        fresh.add(item)
+                    newBlock(fresh)
+                else:
+                    newBlock(bindings & bodyValues)
+
+            push(newGeneratorIteratorFromBody(bodyBuilder))
+
+    builtin "generator",
+        alias       = unaliased,
+        op          = opNop,
+        rule        = PrefixPrecedence,
+        description = "create a generator factory; each call returns a lazy iterator",
+        args        = {
+            "arguments" : {Literal, Block},
+            "body"      : {Block}
+        },
+        attrs       = NoAttrs,
+        returns     = {Function},
+        example     = """
+            odds: generator [n] [
+                loop 1..n 'i [
+                    if odd? i -> yield i
+                ]
+            ]
+
+            print to :block call 'odds [10]      ; [1 3 5 7 9]
+        """:
+            #=======================================================
+            var paramVals: ValueArray
+            var paramDefs: ValueArray
+            if xKind == Literal:
+                paramVals = @[newLiteral(x.s)]
+                paramDefs = @[newLiteral(x.s)]
+            else:
+                for item in x.a:
+                    requireValue(item, {Literal, Word})
+                    paramVals.add(newLiteral(item.s))
+                    paramDefs.add(item)
+
+            let helperBody = newBlock(@[
+                newWord("call"),
+                newLiteral("__generatorMake"),
+                newBlock(@[
+                    newBlock(paramVals),
+                    y
+                ])
+            ])
+
+            push(newFunctionFromDefinition(paramDefs, helperBody))
+
+    builtin "iterator",
+        alias       = unaliased,
+        op          = opNop,
+        rule        = PrefixPrecedence,
+        description = "lazily convert a source into an iterator; equivalent in spirit to `to :iterator ...`",
+        args        = {
+            "source"    : {Integer,String,Block,Range,Inline,Dictionary,Object}
+        },
+        attrs       = NoAttrs,
+        returns     = {Object},
+        example     = """
+            it: iterator 1..3
+            same: to :iterator 1..3
+
+            print next it      ; 1
+            print next it      ; 2
+            print peek it      ; 3
+            print next it      ; 3
+        """:
+            #=======================================================
+            push(newIterator(x))
+
+    builtin "iterator?",
+        alias       = unaliased,
+        op          = opNop,
+        rule        = PrefixPrecedence,
+        description = "check whether given value is an iterator object",
+        args        = {
+            "value" : {Any}
+        },
+        attrs       = NoAttrs,
+        returns     = {Logical},
+        example     = """
+            print iterator? iterator 1..3     ; true
+            print iterator? [1 2 3]           ; false
+        """:
+            #=======================================================
+            push(newLogical(isIteratorObject(x)))
+
+    builtin "next",
+        alias       = unaliased,
+        op          = opNop,
+        rule        = PrefixPrecedence,
+        description = "consume and return the next item from an iterator",
+        args        = {
+            "iterator"  : {Object}
+        },
+        attrs       = NoAttrs,
+        returns     = {Any,Null},
+        example     = """
+            it: iterator [10 20]
+            print next it      ; 10
+            print next it      ; 20
+            print next it      ; null
+        """:
+            #=======================================================
+            if not isIteratorObject(x):
+                Error_OperationNotPermitted("`next` expects a :iterator value")
+
+            var item: Value
+            if nextIteratorValue(x, item):
+                push(item)
+            else:
+                push(VNULL)
+
+    builtin "peek",
+        alias       = unaliased,
+        op          = opNop,
+        rule        = PrefixPrecedence,
+        description = "inspect the next iterator item without consuming it",
+        args        = {
+            "iterator"  : {Object}
+        },
+        attrs       = NoAttrs,
+        returns     = {Any,Null},
+        example     = """
+            it: iterator [10 20]
+            print peek it      ; 10
+            print next it      ; 10
+        """:
+            #=======================================================
+            if not isIteratorObject(x):
+                Error_OperationNotPermitted("`peek` expects a :iterator value")
+
+            var item: Value
+            if peekIteratorValue(x, item):
+                push(item)
+            else:
+                push(VNULL)
+
+    builtin "rewind",
+        alias       = unaliased,
+        op          = opNop,
+        rule        = PrefixPrecedence,
+        description = "reset an iterator back to its beginning",
+        args        = {
+            "iterator"  : {Object}
+        },
+        attrs       = NoAttrs,
+        returns     = {Object},
+        example     = """
+            it: iterator 1..3
+            next it
+            rewind it
+            print next it      ; 1
+        """:
+            #=======================================================
+            if not isIteratorObject(x):
+                Error_OperationNotPermitted("`rewind` expects a :iterator value")
+
+            push(rewindIterator(x))
+
+    builtin "tell",
+        alias       = unaliased,
+        op          = opNop,
+        rule        = PrefixPrecedence,
+        description = "get the current byte offset of a seekable iterator",
+        args        = {
+            "iterator"  : {Object}
+        },
+        attrs       = NoAttrs,
+        returns     = {Integer},
+        example     = """
+            chunks: read.buffer:4 "data.txt"
+            print tell chunks       ; 0
+            first chunks
+            print tell chunks       ; 4
+        """:
+            #=======================================================
+            if not isIteratorObject(x):
+                Error_OperationNotPermitted("`tell` expects a :iterator value")
+
+            push(newInteger(int(tellIterator(x))))
+
+    builtin "seek",
+        alias       = unaliased,
+        op          = opNop,
+        rule        = PrefixPrecedence,
+        description = "move a seekable iterator to the given byte offset",
+        args        = {
+            "iterator"  : {Object},
+            "position"  : {Integer}
+        },
+        attrs       = {
+            "relative"  : ({Logical},"treat the position as a relative delta from the current offset"),
+            "end"       : ({Logical},"treat the position as a backward offset from the end of the source")
+        },
+        returns     = {Object},
+        example     = """
+            chunks: read.buffer:4 "data.txt"
+            seek chunks 8
+            print first chunks
+            ; => "ijkl"
+            ..........
+            chunks: read.buffer:4 "data.txt"
+            seek.relative chunks 4
+            print first chunks
+            ; => "efgh"
+            ..........
+            chunks: read.buffer:4 "data.txt"
+            seek.end chunks 2
+            print first chunks
+            ; => "ij"
+        """:
+            #=======================================================
+            if not isIteratorObject(x):
+                Error_OperationNotPermitted("`seek` expects a :iterator value")
+            if y.i < 0:
+                Error_OperationNotPermitted("`seek` expects a non-negative offset")
+
+            let useRelative = hadAttr("relative")
+            let useEnd = hadAttr("end")
+            if useRelative and useEnd:
+                Error_OperationNotPermitted("`seek.relative` cannot combine with `seek.end`")
+
+            if useEnd:
+                push(seekEndIterator(x, y.i))
+            elif useRelative:
+                push(seekRelativeIterator(x, y.i))
+            else:
+                push(seekIterator(x, y.i))
+
+    builtin "drain",
+        alias       = unaliased,
+        op          = opNop,
+        rule        = PrefixPrecedence,
+        description = "compatibility helper: materialize all remaining iterator items into a block (prefer `to :block`)",
+        args        = {
+            "iterator"  : {Object}
+        },
+        attrs       = NoAttrs,
+        returns     = {Block},
+        example     = """
+            it: iterator 1..5
+            next it
+            print to :block it     ; [2 3 4 5]
+        """:
+            #=======================================================
+            if not isIteratorObject(x):
+                Error_OperationNotPermitted("`drain` expects a :iterator value")
+
+            push(newBlock(iteratorDrain(x)))
 
     builtin "arrange",
         alias       = unaliased,
@@ -891,17 +1474,26 @@ proc defineModule*(moduleName: string) =
         """:
             #=======================================================
             if hadAttr("after"):
-                doIterate({AcceptsLit}, false, newBlock()):
+                doIterate({AcceptsLit, WithCap}, false, newBlock()):
                     var stoppedAt = -1
                     var res: ValueArray
                 do:
                     if isTrue(stack.pop()):
                         stoppedAt = indx
+                        if iteratorMode:
+                            when captured is ValueArray:
+                                res = move captured
+                            else:
+                                res.add(captured)
                         keepGoing = false
                         break
                 do:
-                    if stoppedAt >= 0 and stoppedAt < sourceLen:
-                        res = tailFrom(stoppedAt)
+                    if iteratorMode:
+                        if stoppedAt >= 0:
+                            res.add(iteratorDrain(iterable))
+                    else:
+                        if stoppedAt >= 0 and stoppedAt < sourceLen:
+                            res = tailFrom(stoppedAt)
                     pushResult(newBlock(res))
 
             else:
@@ -962,9 +1554,10 @@ proc defineModule*(moduleName: string) =
             "with"      : ({Literal},"use given index"),
             "first"     : ({Logical,Integer},"only filter first element/s"),
             "last"      : ({Logical,Integer},"only filter last element/s"),
+            "iterator"  : ({Logical},"return the filtered result lazily as an iterator"),
             "parallel"  : ({Logical,Integer},"evaluate the predicate concurrently; integer caps the number of in-flight fibers")
         },
-        returns     = {Block,Any,Nothing},
+        returns     = {Block,Object,Any,Nothing},
         example     = """
             print filter 1..10 [x][
                 even? x
@@ -993,9 +1586,32 @@ proc defineModule*(moduleName: string) =
 
             filter.last:3 1..10 => odd?
             => [1 2 3 4 6 8 10]
+            ..........
+            src: to :iterator 1..8
+            lazy: src | filter.iterator 'x -> even? x
+            to :block lazy
+            ; => [1 3 5 7]
         """:
             #=======================================================
             let aParallel = popAttr("parallel")
+
+            if hadAttr("iterator"):
+                if not aParallel.isNil:
+                    Error_OperationNotPermitted("`.iterator` cannot combine with `.parallel`")
+                if (getAttr("first") != VNULL) or (getAttr("last") != VNULL):
+                    Error_OperationNotPermitted("`.iterator` cannot combine with `.first` / `.last`; compose with `take` instead")
+                doIterate({AcceptsLit, WithCap}, false, newBlock()):
+                    var res: ValueArray
+                do:
+                    let popped = stack.pop()
+                    if isFalse(popped):
+                        res.add(captured)
+                do:
+                    push(newIterator(newBlock(res)))
+                return
+
+            if (getAttr("last") != VNULL) and isIteratorObject(x):
+                Error_OperationNotPermitted("`filter.last` requires reversal/random-access; materialize the iterator first")
 
             when not defined(WEB):
                 if not aParallel.isNil:
@@ -1040,8 +1656,12 @@ proc defineModule*(moduleName: string) =
                             keepGoing = false
                             break
             do:
-                if (onlyFirst or onlyLast) and stoppedAt < sourceLen and stoppedAt != -1:
-                    res.add(tailFrom(stoppedAt))
+                if onlyFirst or onlyLast:
+                    if iteratorMode:
+                        if stoppedAt != -1:
+                            res.add(iteratorDrain(iterable))
+                    elif stoppedAt < sourceLen and stoppedAt != -1:
+                        res.add(tailFrom(stoppedAt))
 
                 if onlyLast:
                     res.reverse()
@@ -1110,6 +1730,9 @@ proc defineModule*(moduleName: string) =
             #=======================================================
             let rollingRight = hadAttr("right")
             let hasSeed = checkAttr("seed")
+
+            if rollingRight and isIteratorObject(x):
+                Error_OperationNotPermitted("`fold.right` requires reversal/random-access; materialize the iterator first")
 
             doIterate({IsRolling}, false, newBlock()):
                 var res: Value
@@ -1260,9 +1883,10 @@ proc defineModule*(moduleName: string) =
         },
         attrs       = {
             "with"      : ({Literal},"use given index"),
+            "iterator"  : ({Logical},"return mapped values lazily as an iterator"),
             "parallel"  : ({Logical,Integer},"run each item in its own cooperative fiber; integer caps the number of in-flight fibers")
         },
-        returns     = {Block,Nothing},
+        returns     = {Block,Object,Nothing},
         example     = """
             print map 1..5 [x][
                 2*x
@@ -1288,6 +1912,11 @@ proc defineModule*(moduleName: string) =
             ]
             ; => ["ONE" "two" "THREE" "four"]
             ..........
+            src: to :iterator 1..5
+            lazy: src | map.iterator 'x -> x*x
+            to :block lazy
+            ; => [1 4 9 16 25]
+            ..........
             ; .parallel, fan out one cooperative fiber per item.
             ; Bare flag = unbounded; integer = sliding-window cap.
             results: map.parallel 1..5 'x [ pause 100 x*2 ]
@@ -1298,10 +1927,32 @@ proc defineModule*(moduleName: string) =
         """:
             #=======================================================
             let aParallel = popAttr("parallel")
+
+            if hadAttr("iterator"):
+                if not aParallel.isNil:
+                    Error_OperationNotPermitted("`.iterator` cannot combine with `.parallel`")
+                doIterate({AcceptsLit, WithCounter}, false, newBlock()):
+                    var res: ValueArray
+                    if sourceLen >= 0:
+                        res = newSeq[Value](sourceLen)
+                do:
+                    if sourceLen >= 0:
+                        res[cntr] = stack.pop()
+                    else:
+                        res.add(stack.pop())
+                do:
+                    push(newIterator(newBlock(res)))
+                return
+
             doIterate({AcceptsLit, WithCounter}, false, newBlock()):
-                var res: ValueArray = newSeq[Value](sourceLen)
+                var res: ValueArray
+                if sourceLen >= 0:
+                    res = newSeq[Value](sourceLen)
             do:
-                res[cntr] = stack.pop()
+                if sourceLen >= 0:
+                    res[cntr] = stack.pop()
+                else:
+                    res.add(stack.pop())
             do:
                 pushResult(newBlock(res))
 
@@ -1436,9 +2087,10 @@ proc defineModule*(moduleName: string) =
             "first"     : ({Logical,Integer},"only return first element/s"),
             "last"      : ({Logical,Integer},"only return last element/s"),
             "n"         : ({Integer},"only return n-th element"),
+            "iterator"  : ({Logical},"return selected values lazily as an iterator"),
             "parallel"  : ({Logical,Integer},"evaluate the predicate concurrently; integer caps the number of in-flight fibers")
         },
-        returns     = {Block,Any,Nothing},
+        returns     = {Block,Object,Any,Nothing},
         example     = """
             print select 1..10 [x][
                 even? x
@@ -1467,9 +2119,31 @@ proc defineModule*(moduleName: string) =
 
             select.last:3 1..10 => odd?
             => [5 7 9]
+            ..........
+            src: to :iterator 1..8
+            lazy: src | select.iterator 'x -> even? x
+            to :block lazy
+            ; => [2 4 6 8]
         """:
             #=======================================================
             let aParallel = popAttr("parallel")
+
+            if hadAttr("iterator"):
+                if not aParallel.isNil:
+                    Error_OperationNotPermitted("`.iterator` cannot combine with `.parallel`")
+                if (getAttr("first") != VNULL) or (getAttr("last") != VNULL) or (getAttr("n") != VNULL):
+                    Error_OperationNotPermitted("`.iterator` cannot combine with `.first` / `.last` / `.n`; compose with `take` or `first` instead")
+                doIterate({AcceptsLit, WithCap}, false, newBlock()):
+                    var res: ValueArray
+                do:
+                    if isTrue(stack.pop()):
+                        res.add(captured)
+                do:
+                    push(newIterator(newBlock(res)))
+                return
+
+            if (getAttr("last") != VNULL) and isIteratorObject(x):
+                Error_OperationNotPermitted("`select.last` requires reversal/random-access; materialize the iterator first")
 
             when not defined(WEB):
                 if not aParallel.isNil:
@@ -1576,6 +2250,9 @@ proc defineModule*(moduleName: string) =
                         if aParallel.kind notin tParallel:
                             Error_OperationNotPermitted("`.parallel` expects a logical flag or a positive integer")
                         prepareIteration(doesAcceptLiterals=false)
+                        let iteratorMode {.inject, used.} = isIteratorObject(iterable)
+                        if iteratorMode:
+                            Error_OperationNotPermitted("`.parallel` is not supported for :iterator sources yet; iterate synchronously or materialize first")
                         fetchIterableItemsForParallel(VTRUE)
                         parallelShortCircuit( answerOnHit=VFALSE, defaultAnswer=VTRUE):
                             isFalse(pBodyResult)
@@ -1632,6 +2309,9 @@ proc defineModule*(moduleName: string) =
                         if aParallel.kind notin tParallel:
                             Error_OperationNotPermitted("`.parallel` expects a logical flag or a positive integer")
                         prepareIteration(doesAcceptLiterals=false)
+                        let iteratorMode {.inject, used.} = isIteratorObject(iterable)
+                        if iteratorMode:
+                            Error_OperationNotPermitted("`.parallel` is not supported for :iterator sources yet; iterate synchronously or materialize first")
                         fetchIterableItemsForParallel(VFALSE)
                         parallelShortCircuit( answerOnHit=VTRUE, defaultAnswer=VFALSE):
                             isTrue(pBodyResult)

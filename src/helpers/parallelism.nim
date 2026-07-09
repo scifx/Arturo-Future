@@ -121,6 +121,12 @@ when not defined(WEB):
     proc onMainFiber*(): bool {.inline.} =
         scheduler.currentFiber.isNil
 
+    proc currentVMContext*(): VMContext {.inline.} =
+        if scheduler.currentFiber.isNil:
+            scheduler.mainCtx
+        else:
+            scheduler.currentFiber.ctx
+
     proc spawnFiber*(entry: proc (), parentSyms: SymTable): Fiber =
         ## Create fiber with fresh VMContext (shallow-copied syms), queue ready.
         if scheduler.mainCtx.isNil:

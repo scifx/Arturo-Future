@@ -1,0 +1,4 @@
+file: "tmp_bench_big.txt"
+stream: read.lines.stream file
+head: take stream 10
+print size head

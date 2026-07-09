@@ -323,6 +323,76 @@ do [
 
     inspect read.lines ~"|dir|/test.txt"
 
+    stream: read.lines.stream ~"|dir|/test.txt"
+    ensure -> iterator? stream
+    ensure [equal? take stream 2 [
+        "The Language"
+        "------------------------------"
+    ]]
+
+    legacy: read.lines.iterator ~"|dir|/test.txt"
+    ensure -> iterator? legacy
+    ensure [equal? take legacy 2 [
+        "The Language"
+        "------------------------------"
+    ]]
+
+]
+
+topic "read.buffer"
+do [
+
+    dir: createTestFolder "read-buffer-size"
+
+    write "abcdefghij" ~"|dir|/test.txt"
+    chunks: read.buffer:4 ~"|dir|/test.txt"
+    ensure -> iterator? chunks
+    ensure [equal? take chunks 3 ["abcd" "efgh" "ij"]]
+
+    shifted: read.buffer:4.seek:4 ~"|dir|/test.txt"
+    ensure [equal? take shifted 2 ["efgh" "ij"]]
+
+    seeker: read.buffer:4 ~"|dir|/test.txt"
+    ensure [zero? tell seeker]
+    seek seeker 8
+    ensure [equal? tell seeker 8]
+    ensure [equal? first seeker "ij"]
+
+    rel: read.buffer:4 ~"|dir|/test.txt"
+    seek.relative rel 4
+    ensure [equal? first rel "efgh"]
+
+    fromEnd: read.buffer:4 ~"|dir|/test.txt"
+    seek.end fromEnd 2
+    ensure [equal? first fromEnd "ij"]
+
+]
+
+topic "read.binary.buffer"
+do [
+
+    dir: createTestFolder "read-binary-buffer-size"
+
+    write.binary "abcdefghij" ~"|dir|/test.bin"
+    chunks: read.binary.buffer:4 ~"|dir|/test.bin"
+    ensure -> iterator? chunks
+    ensure [equal? first chunks to :binary "abcd"]
+    ensure [equal? first chunks to :binary "efgh"]
+    ensure [equal? first chunks to :binary "ij"]
+    ensure -> empty? chunks
+
+    shifted: read.binary.buffer:4.seek:4 ~"|dir|/test.bin"
+    ensure [equal? first shifted to :binary "efgh"]
+
+    seeker: read.binary.buffer:4 ~"|dir|/test.bin"
+    ensure [zero? tell seeker]
+    seek.relative seeker 4
+    ensure [equal? first seeker to :binary "efgh"]
+
+    fromEnd: read.binary.buffer:4 ~"|dir|/test.bin"
+    seek.end fromEnd 2
+    ensure [equal? first fromEnd to :binary "ij"]
+
 ]
 
 topic "read.json"
@@ -370,6 +440,20 @@ do
     ; ---------//---------//---------//
 
     inspect read.csv ~"|dir|/test.csv"
+
+    rows: read.csv.stream ~"|dir|/test.csv"
+    ensure -> iterator? rows
+    ensure [equal? take rows 2 [
+        ["language" " version" " platform"]
+        ["Arturo" " 0.9.83" " win10"]
+    ]]
+
+    legacyRows: read.csv.iterator ~"|dir|/test.csv"
+    ensure -> iterator? legacyRows
+    ensure [equal? take legacyRows 2 [
+        ["language" " version" " platform"]
+        ["Arturo" " 0.9.83" " win10"]
+    ]]
 
 ]
 
@@ -1002,6 +1086,42 @@ do [
 
     write.binary "Hello, world!" ~"|dir|/file.bin"
     print read.file ~"|dir|/file.bin"
+
+]
+
+topic "write.buffer"
+do [
+
+    dir: createTestFolder "write-buffer"
+
+    write "abcdefghij" ~"|dir|/source.txt"
+    chunks: read.buffer:4 ~"|dir|/source.txt"
+    write.buffer:4 chunks ~"|dir|/copy.txt"
+
+    ensure -> exists? ~"|dir|/copy.txt"
+    ensure [equal? read ~"|dir|/copy.txt" "abcdefghij"]
+
+    write "abcdefghij" ~"|dir|/patch.txt"
+    write.buffer:2.seek:4 ["XY" "ZZ"] ~"|dir|/patch.txt"
+    ensure [equal? read ~"|dir|/patch.txt" "abcdXYZZij"]
+
+]
+
+topic "write.binary.buffer"
+do [
+
+    dir: createTestFolder "write-binary-buffer"
+
+    write.binary "abcdefghij" ~"|dir|/source.bin"
+    chunks: read.binary.buffer:4 ~"|dir|/source.bin"
+    write.binary.buffer:4 chunks ~"|dir|/copy.bin"
+
+    ensure -> exists? ~"|dir|/copy.bin"
+    ensure [equal? read.binary ~"|dir|/copy.bin" read.binary ~"|dir|/source.bin"]
+
+    write.binary "abcdefghij" ~"|dir|/patch.bin"
+    write.binary.buffer:2.seek:4 ["XY" "ZZ"] ~"|dir|/patch.bin"
+    ensure [equal? read.binary ~"|dir|/patch.bin" to :binary "abcdXYZZij"]
 
 ]
 

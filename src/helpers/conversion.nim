@@ -15,6 +15,7 @@ import algorithm, parseutils, sequtils, strformat, strutils, sugar, tables, time
 when defined(GMP):
     import helpers/bignums
 
+import helpers/iteratorstate
 import helpers/objects
 
 import helpers/ranges
@@ -53,6 +54,9 @@ template throwConversionFailed(hnt: string = ""): untyped =
 #=======================================
 
 proc convertedValueToType*(x, y: Value, tp: ValueKind, aFormat:Value = nil): Value =
+    if x.tpKind == UserType and x.tid == IteratorTypeName:
+        return newIterator(y)
+
     if unlikely(y.kind == tp):
         return y
     else:
@@ -493,7 +497,9 @@ proc convertedValueToType*(x, y: Value, tp: ValueKind, aFormat:Value = nil): Val
                         else:
                             throwCannotConvert()
                     of Block:
-                        if y.magic.fetch(ToBlockM):
+                        if isIteratorObject(y):
+                            return newBlock(iteratorDrain(y))
+                        elif y.magic.fetch(ToBlockM):
                             mgk(@[y])
                             return stack.pop()
                         else:

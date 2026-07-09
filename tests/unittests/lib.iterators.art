@@ -388,3 +388,106 @@ ensure [zero? size keys gather [] 'x -> x]
 ensure [equal? arrange [] 'x -> x  []]
 ensure [equal? maximum [] 'x -> x  null]
 ensure [equal? minimum [] 'x -> x  null]
+
+; iterator prototype / lazy iteration
+do [
+    it: to :iterator 1..3
+    ensure [iterator? it]
+    ensure [is? :iterator it]
+    ensure [not? empty? it]
+    ensure [equal? peek it 1]
+    ensure [equal? peek it 1]
+    ensure [equal? next it 1]
+    ensure [equal? next it 2]
+    ensure [equal? to :block it [3]]
+    rewind it
+    ensure [equal? to :block it [1 2 3]]
+
+    itArrA: to :iterator 1..4
+    ensure [equal? array itArrA [1 2 3 4]]
+
+    itArrB: to :iterator 1..4
+    ensure [equal? @itArrB [1 2 3 4]]
+
+    itFirst: to :iterator 5..7
+    ensure [equal? first itFirst 5]
+    ensure [equal? first.n:2 itFirst [6 7]]
+
+    itDrop: to :iterator 1..6
+    drop.times:2 itDrop
+    ensure [equal? to :block itDrop [3 4 5 6]]
+
+    takeLazy: take.iterator 1..6 3
+    ensure [iterator? takeLazy]
+    ensure [equal? to :block takeLazy [1 2 3]]
+
+    dropLazy: drop.iterator.times:2 [1 2 3 4 5]
+    ensure [iterator? dropLazy]
+    ensure [equal? to :block dropLazy [3 4 5]]
+
+    lazyMapSource: to :iterator 1..5
+    lazyMapped: lazyMapSource | map.iterator 'x -> x*x
+    ensure [iterator? lazyMapped]
+    ensure [equal? to :block lazyMapped [1 4 9 16 25]]
+
+    lazySelectSource: to :iterator 1..8
+    lazySelected: lazySelectSource | select.iterator 'x -> even? x
+    ensure [iterator? lazySelected]
+    ensure [equal? to :block lazySelected [2 4 6 8]]
+
+    lazyFilterSource: to :iterator 1..8
+    lazyFiltered: lazyFilterSource | filter.iterator 'x -> even? x
+    ensure [iterator? lazyFiltered]
+    ensure [equal? to :block lazyFiltered [1 3 5 7]]
+
+    eagerPipeSource: to :iterator 1..10
+    eagerPipeResult: eagerPipeSource | map => [ inc & ]
+    ensure [equal? eagerPipeResult [2 3 4 5 6 7 8 9 10 11]]
+    ensure [empty? eagerPipeSource]
+
+    lazyPipeSource: to :iterator 1..10
+    lazyPipeResult: lazyPipeSource | map.iterator => [ inc & ]
+    ensure [iterator? lazyPipeResult]
+    ensure [equal? @lazyPipeResult [2 3 4 5 6 7 8 9 10 11]]
+    ensure [empty? lazyPipeSource]
+
+    lazyPipeLines: to :iterator 1..3
+    lazyPipeLines | map.iterator => [ inc & ] | print.lines
+
+    itMap: to :iterator 1..5
+    ensure [equal? map itMap 'x -> x*x  [1 4 9 16 25]]
+
+    itSelect: to :iterator 1..10
+    ensure [equal? select.first:3 itSelect 'x -> odd? x  [1 3 5]]
+
+    itFilter: to :iterator 1..10
+    ensure [equal? filter.first:2 itFilter 'x -> odd? x  [2 4 5 6 7 8 9 10]]
+
+    itCollect: to :iterator 1..10
+    ensure [equal? collect.after itCollect 'x -> x > 4  [5 6 7 8 9 10]]
+
+    itTake: to :iterator 1..10
+    ensure [equal? take itTake 4 [1 2 3 4]]
+
+    it2: to :iterator 1..4
+    ensure [equal? fold it2 [x y] -> x+y  10]
+
+    ; generator / yield
+    odds: generator [n] [
+        loop 1..n 'i [
+            if odd? i -> yield i
+        ]
+    ]
+
+    oddIt: call 'odds [10]
+    ensure [equal? to :block oddIt [1 3 5 7 9]]
+
+    naturals: generator [] [
+        loop 0..4 'i [
+            yield i
+        ]
+    ]
+
+    ns: call 'naturals []
+    ensure [equal? to :block ns [0 1 2 3 4]]
+]

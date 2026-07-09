@@ -1,0 +1,4 @@
+file: "tmp_bench_big.txt"
+lines: read.lines file
+head: take lines 10
+print size head

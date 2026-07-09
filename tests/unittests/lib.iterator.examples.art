@@ -1,0 +1,111 @@
+topic: $[title][
+    print ""
+    print title
+    print ""
+]
+
+; map / filter / select eager + lazy
+ensure [equal? map 1..5 'x -> x*x [1 4 9 16 25]]
+mapSrc: to :iterator 1..5
+mapLazy: mapSrc | map.iterator 'x -> x*x
+ensure [iterator? mapLazy]
+ensure [equal? to :block mapLazy [1 4 9 16 25]]
+
+ensure [equal? filter 1..8 'x -> even? x [1 3 5 7]]
+filterSrc: to :iterator 1..8
+filterLazy: filterSrc | filter.iterator 'x -> even? x
+ensure [iterator? filterLazy]
+ensure [equal? to :block filterLazy [1 3 5 7]]
+
+ensure [equal? select 1..8 'x -> even? x [2 4 6 8]]
+selectSrc: to :iterator 1..8
+selectLazy: selectSrc | select.iterator 'x -> even? x
+ensure [iterator? selectLazy]
+ensure [equal? to :block selectLazy [2 4 6 8]]
+
+; pipe forms
+srcA: to :iterator 1..5
+lazyPipe1: srcA | map.iterator => [ inc & ]
+ensure [iterator? lazyPipe1]
+ensure [equal? @lazyPipe1 [2 3 4 5 6]]
+ensure [empty? srcA]
+
+srcB: to :iterator 1..8
+lazyPipe2: srcB | filter.iterator => [ even? & ]
+ensure [iterator? lazyPipe2]
+ensure [equal? @lazyPipe2 [1 3 5 7]]
+ensure [empty? srcB]
+
+srcC: to :iterator 1..8
+lazyPipe3: srcC | select.iterator => [ even? & ]
+ensure [iterator? lazyPipe3]
+ensure [equal? @lazyPipe3 [2 4 6 8]]
+ensure [empty? srcC]
+
+srcD: to :iterator 1..5
+lazyPipe4: srcD | map.iterator 'x [ inc x ]
+ensure [iterator? lazyPipe4]
+ensure [equal? @lazyPipe4 [2 3 4 5 6]]
+ensure [empty? srcD]
+
+; take / drop / first / empty?
+ensure [equal? take 1..6 3 [1 2 3]]
+ensure [iterator? take.iterator 1..6 3]
+ensure [equal? to :block take.iterator 1..6 3 [1 2 3]]
+
+itDrop1: to :iterator 1..6
+drop.times:2 itDrop1
+ensure [equal? to :block itDrop1 [3 4 5 6]]
+
+ensure [iterator? drop.iterator.times:2 [1 2 3 4 5]]
+ensure [equal? to :block drop.iterator.times:2 [1 2 3 4 5] [3 4 5]]
+
+itFirst: to :iterator 5..7
+ensure [equal? first itFirst 5]
+ensure [equal? first.n:2 itFirst [6 7]]
+
+itEmpty: to :iterator 1..2
+ensure [not? empty? itEmpty]
+@itEmpty
+ensure [empty? itEmpty]
+
+; array / @ conversion
+itArray1: to :iterator 1..4
+ensure [equal? array itArray1 [1 2 3 4]]
+
+itArray2: to :iterator 1..4
+ensure [equal? @itArray2 [1 2 3 4]]
+
+; print.lines on blocks and iterators
+lineBlock: [1 2 3]
+lineIterSrc: to :iterator 1..3
+lineIter: lineIterSrc | map.iterator 'x -> x+1
+
+topic "PRINT.LINES"
+print.lines lineBlock
+print.lines lineIter
+ensure [empty? lineIter]
+
+; read.csv.stream
+write {
+    language,version,platform
+    Arturo,0.9.83,win10
+    Python,3.9,gnu/linux
+    Ruby,3.2.1,macOS
+} "temp-iterator-example.csv"
+
+csvRows: read.csv.stream "temp-iterator-example.csv"
+ensure [iterator? csvRows]
+ensure [equal? take csvRows 2 [
+    ["language" "version" "platform"]
+    ["Arturo" "0.9.83" "win10"]
+]]
+
+csvRows2: read.csv.stream.withHeaders "temp-iterator-example.csv"
+ensure [iterator? csvRows2]
+row1: first csvRows2
+ensure [equal? row1\language "Arturo"]
+ensure [equal? row1\version "0.9.83"]
+ensure [equal? row1\platform "win10"]
+
+delete "temp-iterator-example.csv"

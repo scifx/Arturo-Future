@@ -1,0 +1,3 @@
+file: "tmp_bench_big.txt"
+stream: read.lines.stream file
+print enumerate stream => true

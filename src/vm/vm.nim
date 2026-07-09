@@ -274,8 +274,19 @@ template handleVMErrors(blk: untyped): untyped =
     try:
         blk
     except CatchableError, Defect:
-        let e = getCurrentException()   
-        showError(VError(e))
+        let e = getCurrentException()
+        let verr =
+            if e of VError:
+                VError(e)
+            else:
+                block:
+                    var kind = RuntimeErr
+                    var msg = e.msg
+                    if msg.startsWith("Syntax precheck failed:"):
+                        kind = SyntaxErr
+                        msg = msg.replace("Syntax precheck failed:", "").strip()
+                    VError(kind: kind, msg: msg)
+        showError(verr)
 
         when not defined(WEB):
             savePendingStores()

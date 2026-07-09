@@ -1,0 +1,54 @@
+topic: $[title][
+    print ""
+    print title
+    print ""
+]
+
+; Scenario 1: buffered file copy (like a tiny Python shutil replacement)
+topic "BUFFERED COPY"
+write "abcdefghijklmnopqrstuvwxyz0123456789" "temp-realworld-source.txt"
+chunks: read.buffer:8 "temp-realworld-source.txt"
+write.buffer:8 chunks "temp-realworld-copy.txt"
+ensure [equal? read "temp-realworld-source.txt" read "temp-realworld-copy.txt"]
+print "copy-ok"
+delete "temp-realworld-source.txt"
+delete "temp-realworld-copy.txt"
+
+; Scenario 2: grep-like log scan with streaming head
+; similar to iterating lines in Python and taking first matching items
+topic "LOG SCAN"
+write {
+    INFO boot ok
+    ERROR first issue
+    WARN retrying
+    ERROR second issue
+    INFO done
+} "temp-realworld.log"
+
+logLines: read.lines.stream "temp-realworld.log"
+errorLines: logLines | select.iterator 'line [contains? line "ERROR"]
+ensure [equal? take errorLines 2 ["ERROR first issue" "ERROR second issue"]]
+print "scan-ok"
+delete "temp-realworld.log"
+
+; Scenario 3: csv ETL-ish first rows + projected report
+; a very small everyday data wrangling task
+
+topic "CSV ETL"
+write {
+    name,score,team
+    Alice,10,red
+    Bob,20,blue
+    Cara,30,red
+} "temp-realworld.csv"
+
+rows: read.csv.stream.withHeaders "temp-realworld.csv"
+firstRow: first rows
+ensure [equal? firstRow\name "Alice"]
+ensure [equal? firstRow\score "10"]
+
+rows2: read.csv.stream.withHeaders "temp-realworld.csv"
+report: rows2 | map.iterator 'row [join @[row\name ":" row\team]]
+ensure [equal? @report ["Alice:red" "Bob:blue" "Cara:red"]]
+print "etl-ok"
+delete "temp-realworld.csv"

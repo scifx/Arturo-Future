@@ -1,0 +1,3 @@
+mapped: map.iterator 1..1000000 'x -> x * 2
+head: take mapped 10
+print size head

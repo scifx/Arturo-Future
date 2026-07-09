@@ -1,0 +1,143 @@
+topic: $[title][
+    print ""
+    print title
+    print ""
+]
+
+vecAdd: function [a b][
+    map.with:'i a 'x -> x + b\[i]
+]
+
+vecSub: function [a b][
+    map.with:'i a 'x -> x - b\[i]
+]
+
+vecScale: function [k v][
+    map v 'x -> k * x
+]
+
+vecDot: function [a b][
+    acc: 0
+    loop.with:'i a 'x [
+        acc: acc + x * b\[i]
+    ]
+    acc
+]
+
+matTranspose: function [m][
+    rows: size m
+    cols: size first m
+    out: @[]
+    loop 0..cols-1 'j [
+        row: @[]
+        loop 0..rows-1 'i [
+            'row ++ @[m\[i]\[j]]
+        ]
+        'out ++ @[row]
+    ]
+    out
+]
+
+matMul: function [a b][
+    bt: call 'matTranspose @[b]
+    map a 'rowA [
+        map bt 'colB -> call 'vecDot @[rowA colB]
+    ]
+]
+
+matVec: function [m v][
+    map m 'row -> call 'vecDot @[row v]
+]
+
+bitGenome: function [n][
+    map 1..n 'i -> random 0 1
+]
+
+bitFitness: function [gene][
+    acc: 0
+    loop gene 'bit [ acc: acc + bit ]
+    acc
+]
+
+bitCrossover: function [a b][
+    point: random 1 (size a)-1
+    left: take a point
+    right: drop.times:point b
+    left ++ right
+]
+
+bitMutate: function [gene rate][
+    map gene 'bit [
+        ((random 0 99) < rate)? -> 1 - bit -> bit
+    ]
+]
+
+bitEvolve: function [population rounds mutationRate].export:[bestHistory][
+    bestHistory: @[]
+    pop: population
+    loop 1..rounds 'g [
+        best: maximum pop 'cand -> call 'bitFitness @[cand]
+        bestFit: call 'bitFitness @[best]
+        'bestHistory ++ @[bestFit]
+
+        nextPop: @[best]
+        loop 1..(size pop)-1 'i [
+            parentB: sample pop
+            child: call 'bitCrossover @[best parentB]
+            child: call 'bitMutate @[child mutationRate]
+            'nextPop ++ @[child]
+        ]
+        pop: nextPop
+    ]
+    pop
+]
+
+topic "VECTOR OPS"
+do [
+    r1: call 'vecAdd @[@[1 2 3] @[4 5 6]]
+    r2: call 'vecSub @[@[4 5 6] @[1 2 3]]
+    r3: call 'vecScale @[3 @[1 2 3]]
+    r4: call 'vecDot @[@[1 2 3] @[4 5 6]]
+    ensure [equal? r1 @[5 7 9]]
+    ensure [equal? r2 @[3 3 3]]
+    ensure [equal? r3 @[3 6 9]]
+    ensure [equal? r4 32]
+    print "vector-ok"
+]
+
+topic "MATRIX OPS"
+do [
+    a: @[@[1 2] @[3 4] @[5 6]]
+    b: @[@[7 8 9] @[10 11 12]]
+    mt: call 'matTranspose @[a]
+    mm: call 'matMul @[a b]
+    mv: call 'matVec @[@[@[1 2 3] @[4 5 6]] @[10 20 30]]
+    ensure [equal? mt @[@[1 3 5] @[2 4 6]]]
+    ensure [equal? mm @[@[27 30 33] @[61 68 75] @[95 106 117]]]
+    ensure [equal? mv @[140 320]]
+    print "matrix-ok"
+]
+
+topic "GENETIC ALGORITHM"
+do [
+    popSize: 20
+    genomeSize: 16
+    population: @[]
+    loop 1..popSize 'i [
+        'population ++ @[call 'bitGenome @[genomeSize]]
+    ]
+
+    initialBestGenome: maximum population 'cand -> call 'bitFitness @[cand]
+    initialBest: call 'bitFitness @[initialBestGenome]
+    bestHistory: @[]
+    finalPopulation: call 'bitEvolve @[population 20 15]
+    finalBestGenome: maximum finalPopulation 'cand -> call 'bitFitness @[cand]
+    finalBest: call 'bitFitness @[finalBestGenome]
+
+    ensure -> finalBest >= initialBest
+    ensure -> finalBest <= genomeSize
+    historyCount: size bestHistory
+    ensure [equal? historyCount 20]
+    ensure -> every? bestHistory 'score -> score <= genomeSize
+    print "ga-ok"
+]

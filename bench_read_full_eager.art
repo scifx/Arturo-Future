@@ -1,0 +1,3 @@
+file: "tmp_bench_big.txt"
+lines: read.lines file
+print enumerate lines => true

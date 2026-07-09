@@ -34,6 +34,7 @@ import helpers/arrays
 import helpers/datasource
 import helpers/dictionaries
 import helpers/combinatorics
+import helpers/iteratorstate
 import helpers/objects
 import helpers/ranges
 when not defined(WEB):
@@ -230,6 +231,8 @@ proc defineModule*(moduleName: string) =
                         SP = stop
 
                         push(newBlock(arr))
+                    elif xKind==Object and isIteratorObject(x):
+                        push(newBlock(iteratorDrain(x)))
                     else:
                         push(newBlock(@[x]))
 
@@ -304,6 +307,17 @@ proc defineModule*(moduleName: string) =
                 of Block:
                     if numberInRange(x.a): push(newBlock(x.a.drop()))
                     else: push(newBlock())
+                of Object:
+                    if isIteratorObject(x):
+                        if times < 0:
+                            Error_OperationNotPermitted("`drop` on iterators does not support negative counts")
+                        var item: Value
+                        var left = times
+                        while left > 0 and nextIteratorValue(x, item):
+                            dec left
+                        push(x)
+                    else:
+                        Error_OperationNotPermitted("`drop` only accepts :iterator objects for generic object values")
                 else: discard
 
     # TODO(Collections\combine) should also work with in-place Literals?
@@ -500,12 +514,13 @@ proc defineModule*(moduleName: string) =
         rule        = PrefixPrecedence,
         description = "remove first item from given collection",
         args        = {
-            "collection": {String, Block, Literal, PathLiteral}
+            "collection": {String, Block, Object, Literal, PathLiteral}
         },
         attrs       = {
-            "times"     : ({Integer}, "remove multiple items")
+            "times"     : ({Integer}, "remove multiple items"),
+            "iterator"  : ({Logical}, "return remaining values lazily as an iterator")
         },
-        returns     = {String, Block, Nothing},
+        returns     = {String, Block, Object, Nothing},
         example     = """
             drop "xhello"               ; => "hello"
             drop drop "xhello"          ; => "ello"
@@ -527,12 +542,28 @@ proc defineModule*(moduleName: string) =
             ..........
             drop.times: neg 1 [1 2 3]   ; => [1 2]
             drop.times: neg 2 [1 2 3]   ; => [1]
+            ..........
+            it: to :iterator 1..6
+            drop.times:2 it
+            to :block it                ; => [3 4 5 6]
+            ..........
+            lazy: drop.iterator.times:2 [1 2 3 4 5]
+            to :block lazy              ; => [3 4 5]
         """:
             #=======================================================
             var times = 1
 
             if checkAttr("times"):
                 times = aTimes.i
+
+            if hadAttr("iterator"):
+                if x.kind in {Literal, PathLiteral}:
+                    Error_OperationNotPermitted("`drop.iterator` does not support in-place sources")
+                elif times < 0:
+                    Error_OperationNotPermitted("`drop.iterator` does not support negative counts")
+                else:
+                    push(newDropIterator(x, times))
+                    return
             
             template numberInRange(container: untyped): untyped = 
                 container.len >= abs(times)
@@ -565,6 +596,17 @@ proc defineModule*(moduleName: string) =
                 of Block:
                     if numberInRange(x.a): push(newBlock(x.a.drop()))
                     else: push(newBlock())
+                of Object:
+                    if isIteratorObject(x):
+                        if times < 0:
+                            Error_OperationNotPermitted("`drop` on iterators does not support negative counts")
+                        var item: Value
+                        var left = times
+                        while left > 0 and nextIteratorValue(x, item):
+                            dec left
+                        push(x)
+                    else:
+                        Error_OperationNotPermitted("`drop` only accepts :iterator objects for generic object values")
                 else: discard
 
     builtin "empty",
@@ -631,7 +673,7 @@ proc defineModule*(moduleName: string) =
         rule        = PrefixPrecedence,
         description = "return the first item of the given collection",
         args        = {
-            "collection": {String, Block, Range}
+            "collection": {String, Block, Range, Object}
         },
         attrs       = {
             "n"     : ({Integer}, "get first *n* items")
@@ -642,6 +684,10 @@ proc defineModule*(moduleName: string) =
             print first ["one" "two" "three"]     ; one
             ..........
             print first.n:2 ["one" "two" "three"] ; one two
+            ..........
+            it: to :iterator 5..7
+            first it                               ; => 5
+            first.n:2 it                           ; => [6 7]
         """:
             #=======================================================            
             if checkAttr("n"):
@@ -658,6 +704,22 @@ proc defineModule*(moduleName: string) =
                         raise newException(ValueError, "negative number of elements")
                     else:
                         push(newRange(x.rng[0..min(aN.i, x.rng.len), true]))
+                elif xKind == Object:
+                    if isIteratorObject(x):
+                        if aN.i < 0:
+                            Error_OperationNotPermitted("`first.n` on iterators does not support negative counts")
+                        elif aN.i == 0:
+                            push(newBlock())
+                        else:
+                            var res: ValueArray
+                            var item: Value
+                            var left = aN.i
+                            while left > 0 and nextIteratorValue(x, item):
+                                res.add(item)
+                                dec left
+                            push(newBlock(res))
+                    else:
+                        Error_OperationNotPermitted("`first` only accepts :iterator objects for generic object values")
                 else:
                     if x.a.len == 0: push(newBlock())
                     else: push(newBlock(x.a[0..min(aN.i-1, x.a.high)]))
@@ -667,6 +729,13 @@ proc defineModule*(moduleName: string) =
                     else: push(newChar(x.s.runeAt(0)))
                 elif xKind == Range:
                     push(x.rng[0])
+                elif xKind == Object:
+                    if isIteratorObject(x):
+                        var item: Value
+                        if nextIteratorValue(x, item): push(item)
+                        else: push(VNULL)
+                    else:
+                        Error_OperationNotPermitted("`first` only accepts :iterator objects for generic object values")
                 else:
                     if x.a.len == 0: push(VNULL)
                     else: push(x.a[0])
@@ -2443,11 +2512,13 @@ proc defineModule*(moduleName: string) =
         rule        = PrefixPrecedence,
         description = "keep first N elements from given collection",
         args        = {
-            "collection": {String, Block, Range, Literal, PathLiteral},
+            "collection": {String, Block, Range, Object, Literal, PathLiteral},
             "number"    : {Integer}
         },
-        attrs       = NoAttrs,
-        returns     = {String, Block, Nothing},
+        attrs       = {
+            "iterator" : ({Logical}, "return taken values lazily as an iterator")
+        },
+        returns     = {String, Block, Object, Nothing},
         example     = """
             str: "some text"
             take str 4              ; => some
@@ -2461,9 +2532,24 @@ proc defineModule*(moduleName: string) =
             ..........
             take [1 2 3] 3          ; => [1 2 3]
             take [1 2 3] 4          ; => [1 2 3]
+            ..........
+            it: to :iterator 1..6
+            take it 3               ; => [1 2 3]
+            ..........
+            lazy: take.iterator 1..6 3
+            to :block lazy          ; => [1 2 3]
         """:
             #=======================================================
             
+            if hadAttr("iterator"):
+                if x.kind in {Literal, PathLiteral}:
+                    Error_OperationNotPermitted("`take.iterator` does not support in-place sources")
+                elif y.i < 0:
+                    Error_OperationNotPermitted("`take.iterator` does not support negative counts")
+                else:
+                    push(newTakeIterator(x, y.i))
+                    return
+
             template getUpperLimit(container: untyped): untyped =
                 if abs(y.i) > container.len: container.high
                 else: abs(y.i) - 1
@@ -2521,7 +2607,23 @@ proc defineModule*(moduleName: string) =
                             else: x.rng.len - 1
                         push(newBlock(x.rng[x.rng.len-lowerLimit-1..x.rng.len-1]))
                     else:
-                        push(newBlock())      
+                        push(newBlock())
+                of Object:
+                    if isIteratorObject(x):
+                        if y.i < 0:
+                            Error_OperationNotPermitted("`take` with a negative count needs reverse/random-access; materialize the iterator first")
+                        elif y.i == 0:
+                            push(newBlock())
+                        else:
+                            var res: ValueArray
+                            var item: Value
+                            var left = y.i
+                            while left > 0 and nextIteratorValue(x, item):
+                                res.add(item)
+                                dec left
+                            push(newBlock(res))
+                    else:
+                        Error_OperationNotPermitted("`take` only accepts :iterator objects for generic object values")
                 else: discard
 
     builtin "tally",
@@ -2765,7 +2867,7 @@ proc defineModule*(moduleName: string) =
         rule        = PrefixPrecedence,
         description = "check if given collection is empty",
         args        = {
-            "collection": {String, Block, Dictionary, Null}
+            "collection": {String, Block, Dictionary, Object, Null}
         },
         attrs       = NoAttrs,
         returns     = {Logical},
@@ -2775,6 +2877,11 @@ proc defineModule*(moduleName: string) =
             empty? #[]            ; => true
 
             empty? [1 "two" 3]    ; => false
+            ..........
+            it: to :iterator 1..2
+            empty? it             ; => false
+            @it
+            empty? it             ; => true
         """:
             #=======================================================
             case xKind:
@@ -2783,6 +2890,11 @@ proc defineModule*(moduleName: string) =
                 of Block:
                     push(newLogical(x.a.len == 0))
                 of Dictionary: push(newLogical(x.d.len == 0))
+                of Object:
+                    if isIteratorObject(x):
+                        push(newLogical(iteratorExhausted(x)))
+                    else:
+                        push(VFALSE)
                 else: discard
 
     # TODO(Collections\in?) add new `.key` option?

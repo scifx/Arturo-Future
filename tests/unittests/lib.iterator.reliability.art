@@ -1,0 +1,29 @@
+; reliability / stress-ish checks for iterator pipelines
+
+loop 1..50 'round [
+    base: to :iterator 1..100
+    mapped: base | map.iterator 'x [x + round]
+    selected: mapped | select.iterator 'x [0 = x % 2]
+    filtered: selected | filter.iterator 'x [x < round + 10]
+    head: take filtered 5
+    ensure [5 = size head]
+]
+
+loop 1..30 'round [
+    g: generator [n] [
+        loop 1..n 'x [yield x + round]
+    ]
+
+    it: call 'g [20]
+    ensure [20 = size @it]
+]
+
+loop 1..30 'round [
+    it: to :iterator 1..10
+    ensure [equal? first it 1]
+    ensure [equal? first.n:2 it [2 3]]
+    dropped: drop.iterator.times:3 [1 2 3 4 5 6]
+    ensure [equal? take dropped 2 [4 5]]
+]
+
+print "ok"

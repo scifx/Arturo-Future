@@ -1,0 +1,21 @@
+; focused seek/tell checks
+
+write "abcdefghij" "temp-seek-iter.txt"
+
+it: read.buffer:4 "temp-seek-iter.txt"
+ensure [zero? tell it]
+ensure [equal? first it "abcd"]
+ensure [equal? tell it 4]
+seek.relative it 2
+ensure [equal? tell it 6]
+ensure [equal? first it "ghij"]
+rewind it
+ensure [equal? first it "abcd"]
+
+it2: read.buffer:4 "temp-seek-iter.txt"
+seek.end it2 2
+ensure [equal? tell it2 8]
+ensure [equal? first it2 "ij"]
+
+delete "temp-seek-iter.txt"
+print "ok"
