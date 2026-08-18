@@ -227,8 +227,9 @@ proc defineModule*(moduleName: string) =
                 "certificate"   : ({String},"use SSL certificate at given path"),
                 "raw"           : ({Logical},"return raw response without processing"),
                 "async"         : ({Logical},"perform request asynchronously and return a `:task`"),
-                "stream"        : ({Logical},"return as soon as the headers arrive, with `\\body` as a lazy iterator of lines"),
-                "events"        : ({Logical},"with `.stream`, yield parsed server-sent events instead of lines"),
+                "stream"        : ({Logical},"return as soon as the headers arrive, with `\\body` as a lazy iterator (SSE responses are decoded into events automatically)"),
+                "events"        : ({Logical},"with `.stream`, always decode the body as server-sent events"),
+                "lines"         : ({Logical},"with `.stream`, always yield raw lines, even for an SSE response"),
                 "buffer"        : ({Integer},"with `.stream`, yield raw chunks as received instead of lines")
             },
             returns     = {Dictionary,Null,Task},
@@ -271,15 +272,25 @@ proc defineModule*(moduleName: string) =
             print r\status
             loop r\body 'line -> print line
             ..........
-            ; consume an AI/SSE token stream as it is generated
-            r: request.stream.events.post.json
+            ; consume an AI/SSE token stream as it is generated.
+            ; a `text/event-stream` response is decoded into events
+            ; automatically, and JSON payloads land ready-made in `\json`
+            r: request.stream.post.json
                  "https://api.openai.com/v1/chat/completions"
                  #[model: "gpt-4o" stream: true messages: @[#[role:"user" content:"hi"]]]
 
             loop r\body 'ev [
                 if ev\data <> "[DONE]" ->
-                    prints (read.json ev\data)\choices\0\delta\content
+                    prints ev\json\choices\0\delta\content
             ]
+            ..........
+            ; each event is #[event: data: id: retry: json:]
+            ; `data` is always the raw string, `json` is :null if it isn't JSON
+            loop r\body 'ev ->
+                print [ev\event "->" ev\json\type]
+            ..........
+            ; opt out of the automatic decoding and get raw lines back
+            r: request.stream.lines "https://example.com/sse" ø
             ..........
             ; stop early - the connection is closed for us
             r: request.stream "https://example.com/endless" ø
@@ -344,12 +355,19 @@ proc defineModule*(moduleName: string) =
                     if hadAttr("async"):
                         Error_OperationNotPermitted("`.stream` cannot combine with `.async` - it already returns before the body is read")
 
+                    let wantsEvents = hadAttr("events")
+                    let wantsRawLines = hadAttr("lines")
+                    if wantsEvents and wantsRawLines:
+                        Error_OperationNotPermitted("`.events` cannot combine with `.lines`")
+
                     var unit = StreamLines
-                    if hadAttr("events"):
+                    if wantsEvents:
                         unit = StreamEvents
                     if not bufferVal.isNil and bufferVal.kind != Null:
-                        if unit == StreamEvents:
+                        if wantsEvents:
                             Error_OperationNotPermitted("`.buffer:` cannot combine with `.events`")
+                        if wantsRawLines:
+                            Error_OperationNotPermitted("`.buffer:` cannot combine with `.lines`")
                         if bufferVal.kind != Integer or bufferVal.i < 1:
                             Error_OperationNotPermitted("`.buffer:` expects a positive integer")
                         unit = StreamBuffer
@@ -396,6 +414,16 @@ proc defineModule*(moduleName: string) =
                             resp = respFut.read()
                         else:
                             resp = coopWait(respFut)
+
+                        # The server already tells us what it is sending. If it
+                        # declares `text/event-stream`, decoding it as raw
+                        # lines is never what the caller wanted - so default to
+                        # SSE frames unless `.lines` / `.buffer:` asked for
+                        # something else explicitly.
+                        if unit == StreamLines and not wantsRawLines:
+                            let ctype = resp.headers.getOrDefault("content-type")
+                            if ($ctype).toLowerAscii().contains("text/event-stream"):
+                                unit = StreamEvents
 
                         push httpResponseToValue(
                             resp.version,

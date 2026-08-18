@@ -60,6 +60,12 @@ def handle(conn):
                 conn.sendall(chunk("forever\n"))
                 time.sleep(0.05)
 
+        elif path.startswith("/json-sse"):
+            conn.sendall(hdr.format(ct="text/event-stream").encode())
+            conn.sendall(chunk('event: token\ndata: {"delta": "hi", "n": 1}\n\n'))
+            conn.sendall(chunk("data: [DONE]\n\n"))
+            conn.sendall(b"0\r\n\r\n")
+
         elif path.startswith("/multiline-sse"):
             conn.sendall(hdr.format(ct="text/event-stream").encode())
             conn.sendall(chunk(": a comment\n\n"))

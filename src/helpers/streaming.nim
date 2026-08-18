@@ -43,6 +43,7 @@ when not defined(WEB):
         import winlean
 
     import helpers/iteratorstate
+    import helpers/jsonobject
     import helpers/parallelism
 
     import vm/values/value
@@ -181,10 +182,27 @@ when not defined(WEB):
                 else:       discard
 
         var d = initOrderedTable[string, Value]()
+        let rawData = evData.join("\n")
+
         d["event"] = newString(evName)
-        d["data"] = newString(evData.join("\n"))
+        d["data"] = newString(rawData)
         d["id"] = newString(evId)
         d["retry"] = newString(evRetry)
+
+        # Practically every SSE producer worth streaming (OpenAI & friends)
+        # puts JSON in `data:`. Decode it here so the caller can reach straight
+        # for `ev\json\...` instead of hand-writing `read.json ev\data` on every
+        # single frame. Non-JSON payloads (`[DONE]`, plain text, keep-alives)
+        # simply leave `json` as :null - `data` always stays the raw string.
+        var decoded = VNULL
+        let trimmed = rawData.strip()
+        if trimmed.len > 1 and (trimmed[0] == '{' or trimmed[0] == '['):
+            try:
+                decoded = valueFromJson(trimmed)
+            except CatchableError:
+                decoded = VNULL
+        d["json"] = decoded
+
         result = newDictionary(d)
 
     proc emitEvents(state: IteratorState, pending: var string, data: string) =

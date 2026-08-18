@@ -85,21 +85,46 @@ print r\status                     ; 头一到就返回，body 还在路上
 loop r\body 'line -> print line    ; 边收边处理
 ```
 
-AI 流式（SSE）：
+AI 流式（SSE）—— **不需要写 `.events`**：
 
 ```red
-r: request.stream.events.post.json
+r: request.stream.post.json
      "https://api.openai.com/v1/chat/completions"
      #[model: "gpt-4o" stream: true messages: @[...]]
 
 loop r\body 'ev [
     if ev\data <> "[DONE]" ->
-        prints (read.json ev\data)\choices\0\delta\content
+        prints ev\json\choices\0\delta\content
 ]
 ```
 
-`.events` 产出的每个事件是 `#[event: data: id: retry:]` 形状的字典，
-按 SSE 规范以空行分帧、多行 `data:` 自动用 `\n` 拼接。
+#### SSE 自动识别
+
+服务器用 `Content-Type: text/event-stream` 已经明确声明了"我发的是 SSE"。
+既然如此，还要求用户手写 `.events` 就是多余的——而且**忘写不会报错**，
+只会静默退回行模式，把一帧拆成 `event: xxx` / `data: {...}` / `""` 三个字符串，
+`split.lines` 和 `read.json` 都无从下手。这正是实际使用中踩到的坑。
+
+所以现在：**响应头是 `text/event-stream` 就自动按事件解码**。
+`.events` 保留为强制开关（服务器 Content-Type 不规范时用），
+`.lines` 是显式的退出通道。
+
+#### 事件形状
+
+每个事件是 `#[event: data: id: retry: json:]`：
+
+| 字段 | 说明 |
+|---|---|
+| `event` / `id` / `retry` | SSE 规范字段 |
+| `data` | **始终**是原始字符串，不做任何加工 |
+| `json` | `data` 是 JSON 时自动解析好的值；否则 `:null` |
+
+加 `json` 是因为几乎所有值得流式消费的 SSE（OpenAI 及兼容实现）
+`data:` 里装的都是 JSON，让用户对**每一帧**手写 `read.json ev\data` 是纯粹的噪音。
+`[DONE]`、心跳、纯文本这些非 JSON 载荷不会报错，`json` 留 `:null`，
+而 `data` 永远保底可用。
+
+多行 `data:` 仍按规范用 `\n` 拼接后再尝试解析。
 
 ### 2.4 `unplug` —— 提前关闭
 

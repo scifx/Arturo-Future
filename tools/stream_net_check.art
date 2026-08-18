@@ -45,6 +45,33 @@ evs2: @r4\body
 check "comment-only frame dropped" -> equal? size evs2 1
 check "multiline data joined"      -> equal? evs2\0\data "part one\npart two"
 
+print "\n>> request.stream - SSE auto-detection (no .events needed)"
+rAuto: request.stream base ++ "/sse" ø
+autoEvs: @rAuto\body
+check "text/event-stream decoded automatically" -> dictionary? autoEvs\0
+check "auto-detected event name"                -> equal? autoEvs\0\event "token"
+check "auto-detected data"                      -> equal? autoEvs\0\data "tok1"
+
+print "\n>> request.stream - .lines opts out of auto-detection"
+rLines: request.stream.lines base ++ "/sse" ø
+rawLines: @rLines\body
+check "raw lines are strings"        -> string? rawLines\0
+check "raw SSE line preserved"       -> equal? rawLines\0 "event: token"
+
+print "\n>> request.stream - non-SSE stays line-based"
+rPlain: request.stream base ++ "/big" ø
+check "text/plain still yields lines" -> string? first rPlain\body
+unplug rPlain\body
+
+print "\n>> request.stream - \\json auto-decoding"
+rJson: request.stream base ++ "/json-sse" ø
+jEvs: @rJson\body
+check "json payload decoded"      -> dictionary? jEvs\0\json
+check "json field reachable"      -> equal? jEvs\0\json\delta "hi"
+check "data still raw string"     -> string? jEvs\0\data
+check "non-json data -> :null"    -> null? jEvs\1\json
+check "non-json data preserved"   -> equal? jEvs\1\data "[DONE]"
+
 print "\n>> request.stream - early abandon"
 r5: request.stream base ++ "/endless" ø
 check "take from endless stream"   -> equal? take r5\body 3 ["forever" "forever" "forever"]
