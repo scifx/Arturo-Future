@@ -28,6 +28,7 @@ when not defined(WEB):
         import std/posix_utils
 
 when not defined(WEB):
+    import helpers/environment
     import helpers/parallelism
     import helpers/stores
     import helpers/streaming
@@ -107,6 +108,44 @@ proc defineModule*(moduleName: string) =
 
     when not defined(WEB):
 
+        builtin "cd",
+            alias       = unaliased,
+            op          = opNop,
+            rule        = PrefixPrecedence,
+            description = "change current working directory",
+            args        = {
+                "directory" : {String}
+            },
+            attrs       = NoAttrs,
+            returns     = {Nothing},
+            example     = """
+            print path\current
+            ; /Users/drkameleon
+
+            cd "Documents"
+            print path\current
+            ; /Users/drkameleon/Documents
+            ..........
+            ; absolute paths work just as well
+            cd "/tmp"
+            print path\current
+            ; /tmp
+            ..........
+            ; the working directory is shared with any child process
+            cd "/tmp"
+            print execute "pwd"
+            ; /tmp
+            """:
+                #=======================================================
+                let target = x.s
+                if unlikely(not target.dirExists()):
+                    Error_DirectoryNotFound(target)
+
+                try:
+                    setCurrentDir(target)
+                except CatchableError:
+                    Error_DirectoryNotFound(target)
+
         builtin "config",
             alias       = unaliased, 
             op          = opNop,
@@ -147,7 +186,7 @@ proc defineModule*(moduleName: string) =
             description = "get environment variables",
             args        = NoArgs,
             attrs       = NoAttrs,
-            returns     = {Dictionary},
+            returns     = {Object},
             example     = """
             print env\SHELL
             ; /bin/zsh
@@ -157,14 +196,28 @@ proc defineModule*(moduleName: string) =
 
             print env\PATH
             ; /Users/drkameleon/.arturo/bin:/opt/local/bin:/opt/local/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+            ..........
+            ; environment variables are not just readable - they're writable too!
+            env\MY_VARIABLE: "some value"
+
+            print env\MY_VARIABLE
+            ; some value
+
+            ; and any child process will see it as well
+            print execute "printenv MY_VARIABLE"
+            ; some value
+            ..........
+            ; appending to an existing variable works just as you'd expect
+            env\PATH: env\PATH ++ ":/opt/my/bin"
+
+            ; while setting a variable to `null` removes it altogether
+            env\MY_VARIABLE: null
+
+            print null? env\MY_VARIABLE
+            ; true
             """:
                 #=======================================================
-                var res: ValueDict = initOrderedTable[string,Value]()
-
-                for k,v in envPairs():
-                    res[k] = newString(v)
-
-                push(newDictionary(res)) 
+                push(getEnvironmentValue())
 
     when not defined(WEB):
         # TODO(System\execute) make function work for Web/JS builds

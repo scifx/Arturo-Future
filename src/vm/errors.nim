@@ -703,6 +703,13 @@ func Error_FileNotFound*(path: string) =
                 $#
         """ ~~ @[path], errCode=ENOENT
 
+func Error_DirectoryNotFound*(path: string) =
+    panic:
+        toError SystemErr, """
+            Directory not found:
+                $#
+        """ ~~ @[path], errCode=ENOENT
+
 #------------------------
 # VM Errors
 #------------------------

@@ -28,3 +28,67 @@ do [
     passed
     
 ]
+
+topic "env"
+do [
+
+    ensure -> object? env
+    ensure -> not? null? env\HOME
+    passed
+
+    ; reading a non-existing variable yields null
+    ensure -> null? env\ARTURO_UNITTEST_NOPE
+    passed
+
+    ; writing goes straight through to the process environment
+    env\ARTURO_UNITTEST: "hello"
+    ensure -> equal? env\ARTURO_UNITTEST "hello"
+    ensure -> equal? "hello" strip execute "printenv ARTURO_UNITTEST"
+    passed
+
+    ; and reads back as a proper string
+    ensure -> string? env\ARTURO_UNITTEST
+    passed
+
+    ; the usual append idiom works as expected
+    env\ARTURO_UNITTEST: env\ARTURO_UNITTEST ++ "-world"
+    ensure -> equal? env\ARTURO_UNITTEST "hello-world"
+    passed
+
+    ; setting a variable to null removes it altogether
+    env\ARTURO_UNITTEST: null
+    ensure -> null? env\ARTURO_UNITTEST
+    passed
+
+    ; while the whole dictionary-like protocol still works
+    ensure -> positive? size env
+    ensure -> key? env "HOME"
+    ensure -> contains? keys env "HOME"
+    ensure -> dictionary? to :dictionary env
+    passed
+
+]
+
+topic "cd"
+do [
+
+    original: path\current
+
+    cd "/"
+    ensure -> equal? path\current "/"
+    passed
+
+    ; child processes inherit the new working directory
+    ensure -> equal? "/" strip execute "pwd"
+    passed
+
+    cd original
+    ensure -> equal? path\current original
+    passed
+
+    ; changing to a non-existing directory is an error
+    ensure -> error? try [ cd "/no/such/directory/at/all" ]
+    ensure -> equal? path\current original
+    passed
+
+]

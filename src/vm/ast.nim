@@ -612,14 +612,15 @@ proc processBlock*(
 
         let basePath {.cursor.} = val.p[0]
 
-        when isLabel:
-            var baseNode = newVariable(basePath)
-        else:
-            var baseNode = 
-                if TmpArities.getOrDefault(basePath.s, -1) == 0:
-                    newCallNode(OtherCall, 0, basePath)
-                else:
-                    newVariable(basePath)
+        # Both `a\b` and `a\b:` must resolve their *base* the same way:
+        # if it's a 0-arity function (like `env` or `config`), it has to be
+        # called, so that we get the actual value to index into - otherwise
+        # we'd be trying to index into the function value itself.
+        var baseNode =
+            if TmpArities.getOrDefault(basePath.s, -1) == 0:
+                newCallNode(OtherCall, 0, basePath)
+            else:
+                newVariable(basePath)
 
         var i = 1
         while i < val.p.len:
