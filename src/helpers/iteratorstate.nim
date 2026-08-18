@@ -56,6 +56,9 @@ type
         hasPeeked*   : bool
         peeked*      : Value
         rebuild*     : proc(): Value {.closure.}
+        meta*        : ValueDict                    ## extra fields mirrored onto the
+                                                    ## iterator object (e.g. `exit`)
+        closeHook*   : proc() {.closure.}           ## released by `unplug` / exhaustion
 
 #=======================================
 # Variables
@@ -88,6 +91,9 @@ proc syncMeta(it: Value, state: IteratorState) =
     if it.kind == Object:
         it.o[IteratorDoneField] = newLogical(state.finished)
         it.o[IteratorRewindField] = newLogical(canRewind(state))
+        if not state.meta.isNil:
+            for k, v in state.meta.pairs:
+                it.o[k] = v
 
 func isIteratorObject*(v: Value): bool {.inline.} =
     v.kind == Object and
@@ -154,10 +160,18 @@ proc finishIteratorProducer(state: IteratorState) =
 proc yieldToIterator*(state: IteratorState, v: Value) =
     emitIteratorValue(state, v)
 
+proc setIteratorMeta*(state: IteratorState, key: string, v: Value) =
+    ## Publish an extra field (e.g. `exit`, `status`) that will be mirrored
+    ## onto the `:iterator` object on the next sync.
+    if state.meta.isNil:
+        state.meta = initOrderedTable[string, Value]()
+    state.meta[key] = v
+
 proc newProducedIterator*(
     sourceName: string,
     rebuild: proc(): Value {.closure.} = nil,
-    producer: proc(state: IteratorState) {.closure.}
+    producer: proc(state: IteratorState) {.closure.},
+    onState: proc(state: IteratorState) {.closure.} = nil
 ): Value =
     let state = IteratorState(
         sourceName: sourceName,
@@ -173,6 +187,11 @@ proc newProducedIterator*(
     )
 
     result = iteratorFromState(state)
+
+    # let the caller wire `closeHook` / `meta` onto the state *before* the
+    # producer fiber gets a chance to run
+    if not onState.isNil:
+        onState(state)
 
     discard spawnFiber(proc () =
         let ctx = currentVMContext()
@@ -712,6 +731,25 @@ proc iteratorExhausted*(it: Value): bool =
 proc iteratorRemainingHint*(it: Value): int =
     if iteratorExhausted(it): 0
     else: -1
+
+proc closeIterator*(it: Value) =
+    ## Release whatever the iterator is holding onto (a child process, an
+    ## HTTP connection, ...) and mark it exhausted. Idempotent, and a no-op
+    ## for iterators that hold no external resource.
+    let state = getIteratorState(it)
+
+    if not state.closeHook.isNil:
+        let hook = state.closeHook
+        state.closeHook = nil
+        try:
+            hook()
+        except CatchableError:
+            discard
+
+    state.finished = true
+    state.hasPeeked = false
+    state.peeked = VNULL
+    syncMeta(it, state)
 
 proc iteratorDrain*(it: Value): ValueArray =
     ## Drain every remaining item from the iterator into a block. This is

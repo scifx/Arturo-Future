@@ -28,11 +28,14 @@ when not defined(WEB):
     # build the `:dictionary` Value the `request` builtin returns from the
     # raw fields of an HTTP response. shared by sync `request` and the
     # in-process `request.async` path so the two stay byte-for-byte identical.
-    proc httpResponseToValue*(version, body, status: string,
+    proc httpResponseToValue*(version: string, body: Value, status: string,
                               headers: HttpHeaders, raw: bool): Value =
+        ## `body` is a ready-made Value so that `request.stream` can hand us a
+        ## lazy `:iterator` while plain `request` hands us a `:string` - the
+        ## shape of the response dictionary stays identical either way.
         var ret: ValueDict = initOrderedTable[string, Value]()
         ret["version"] = newString(version)
-        ret["body"] = newString(body)
+        ret["body"] = body
         ret["headers"] = newDictionary()
 
         if raw:
@@ -73,3 +76,7 @@ when not defined(WEB):
                 ret["headers"].d[k] = val
 
         result = newDictionary(ret)
+
+    proc httpResponseToValue*(version, body, status: string,
+                              headers: HttpHeaders, raw: bool): Value {.inline.} =
+        httpResponseToValue(version, newString(body), status, headers, raw)

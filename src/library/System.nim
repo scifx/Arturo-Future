@@ -30,6 +30,7 @@ when not defined(WEB):
 when not defined(WEB):
     import helpers/parallelism
     import helpers/stores
+    import helpers/streaming
 
 import vm/lib
 import vm/[env, errors]
@@ -181,9 +182,11 @@ proc defineModule*(moduleName: string) =
                 "args"      : ({Block},"use given command arguments"),
                 "async"     : ({Logical},"execute asynchronously and return a :task"),
                 "code"      : ({Logical},"return process exit code"),
-                "directly"  : ({Logical},"execute command directly, as a shell command")
+                "directly"  : ({Logical},"execute command directly, as a shell command"),
+                "stream"    : ({Logical},"lazily stream the command's output as an iterator"),
+                "buffer"    : ({Integer},"with `.stream`, yield raw chunks of given size instead of lines")
             },
-            returns     = {String, Dictionary, Task},
+            returns     = {String, Dictionary, Task, Object},
             example     = """
             print execute "pwd"
             ; /Users/admin/Desktop
@@ -225,6 +228,31 @@ proc defineModule*(moduleName: string) =
             aoc            bundle  cmd.c     galilee          jquery.js  test.art
             architectures  cave    expr.art  generic_klist.c  shell
             => 0
+            ......................
+            ; process the output line-by-line, as it arrives -
+            ; without waiting for the command to finish
+            loop execute.stream "ping -c 3 example.com" 'line ->
+                print ["<<" line]
+            ......................
+            ; early-stop: the child process is terminated
+            ; as soon as we stop pulling from it
+            print take execute.stream "yes hello" 3
+            ; => ["hello" "hello" "hello"]
+            ......................
+            ; streams are plain iterators, so they pipe
+            execute.stream "cat huge.log"
+                | select.iterator 'l -> contains? l "ERROR"
+                | take 20
+                | loop => print
+            ......................
+            ; the exit code shows up once the stream is drained
+            s: execute.stream "ls /nonexistent"
+            drain s
+            print s\exit    ; => 2
+            ......................
+            ; raw fixed-size chunks instead of lines
+            loop execute.stream.buffer:1024 "cat big.bin" 'chunk ->
+                print size chunk
             """:
                 #=======================================================
                 # get arguments & options
@@ -234,6 +262,35 @@ proc defineModule*(moduleName: string) =
                     args = aArgs.a.map((x) => (requireAttrValue("args", x, {String}); x.s))
                 let code = (hadAttr("code"))
                 let directly = (hadAttr("directly"))
+
+                # `.stream` -> lazily produce output as an :iterator
+                let bufferVal = popAttr("buffer")
+                if hadAttr("stream"):
+                    if hadAttr("async"):
+                        Error_OperationNotPermitted("`.stream` cannot combine with `.async`")
+                    if directly:
+                        Error_OperationNotPermitted("`.stream` cannot combine with `.directly`")
+                    if code:
+                        Error_OperationNotPermitted("`.stream` publishes the exit code on the iterator itself (`\\exit`), so it cannot combine with `.code`")
+
+                    var unit = StreamLines
+                    var bufSize = DefaultStreamBuffer
+                    if not bufferVal.isNil and bufferVal.kind != Null:
+                        if bufferVal.kind != Integer or bufferVal.i < 1:
+                            Error_OperationNotPermitted("`.buffer:` expects a positive integer")
+                        unit = StreamBuffer
+                        bufSize = bufferVal.i
+
+                    var fullCmd = cmd
+                    for i in 0..high(args):
+                        fullCmd.add(' ')
+                        fullCmd.add(quoteShell(args[i]))
+
+                    push(newShellStreamIterator(fullCmd, unit, bufSize))
+                    return
+
+                if not bufferVal.isNil and bufferVal.kind != Null:
+                    Error_OperationNotPermitted("`.buffer:` only makes sense together with `.stream`")
 
                 let explicitAsync = hadAttr("async")
                 if explicitAsync or (not directly and not onMainFiber()):
