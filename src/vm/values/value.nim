@@ -495,7 +495,8 @@ func newDate*(dt: sink DateTime): Value {.inline.} =
         "month"     : newInteger(ord(dt.month)),
         "Month"     : newString($(dt.month)),
         "year"      : newInteger(dt.year),
-        "utc"       : newInteger(dt.utcOffset)
+        "utc"       : newInteger(dt.utcOffset),
+        "timestamp" : newInteger(int(dt.toTime().toUnix()))
     }.toOrderedTable
     let newTime = new DateTime
     newTime[] = dt

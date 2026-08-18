@@ -35,3 +35,134 @@ do [
     passed
 
 ]
+
+topic « date arithmetic
+do [
+
+    d1: to :date "1995-02-03T12:00:00+08:00"
+    d2: to :date "2025-06-09T12:00:00+08:00"
+
+    ; subtracting two dates gives us the elapsed time, as a time quantity
+    delta: d2 - d1
+    ensure -> quantity? delta
+    ensure -> 957657600 = scalar delta --> `s
+    passed
+
+    ; ...which we can convert to whichever unit we please
+    ensure -> 15960960 = scalar delta --> `min
+    ensure -> 266016   = scalar delta --> `h
+    ensure -> 11084    = scalar delta --> `day
+    passed
+
+    ; the difference respects UTC offsets - these are the *same* instant
+    ensure -> 0 = scalar ((to :date "2021-03-22T12:25:30+01:00") -
+                          (to :date "2021-03-22T11:25:30+00:00")) --> `s
+    ; ...while these are one hour apart, despite the same wall clock
+    ensure -> 3600 = scalar ((to :date "2021-03-22T11:25:30+00:00") -
+                             (to :date "2021-03-22T11:25:30+01:00")) --> `s
+    passed
+
+    ; a negative difference is perfectly fine
+    ensure -> negative? scalar (d1 - d2) --> `s
+    passed
+
+]
+
+topic « date shifting
+do [
+
+    base: to :date "2021-03-22T11:25:30+00:00"
+
+    ; adding a time quantity to a date gives us a new date
+    ensure -> date? base + 3`days
+    ensure -> (to :date "2021-03-25T11:25:30+00:00") = base + 3`days
+    ensure -> (to :date "2021-03-19T11:25:30+00:00") = base - 3`days
+    passed
+
+    ; ...and it's commutative
+    ensure -> (base + 3`days) = (3`days + base)
+    passed
+
+    ; units are all understood, and converted as needed
+    ensure -> (base + 1`day)  = base + 24`h
+    ensure -> (base + 1`h)    = base + 60`min
+    ensure -> (base + 1`min)  = base + 60`s
+    ensure -> (base + 2`wk)   = base + 14`days
+    passed
+
+    ; months and years shift the *calendar*, keeping the time of day
+    ensure -> (to :date "2021-04-22T11:25:30+00:00") = base + 1`mo
+    ensure -> (to :date "2022-03-22T11:25:30+00:00") = base + 1`yr
+    ensure -> (after.months:1 base) = base + 1`mo
+    ensure -> (after.years:1 base)  = base + 1`yr
+    passed
+
+    ; sub-second precision survives the round-trip
+    ensure -> 1500 = scalar ((base + 1500`ms) - base) --> `ms
+    ensure -> 1    = scalar ((base + 1`ns) - base) --> `ns
+    passed
+
+    ; adding then subtracting the same interval gets us back where we started
+    ensure -> base = (base + 3`days) - 3`days
+    passed
+
+    ; and the round-trip from the original issue holds
+    d1: to :date "1995-02-03T12:00:00+08:00"
+    d2: to :date "2025-06-09T12:00:00+08:00"
+    ensure -> d2 = d1 + (d2 - d1)
+    passed
+
+    ; a date may only be shifted by a *duration*, not by any other quantity
+    ensure -> error? try [ base + 3`m ]
+    passed
+
+]
+
+
+topic « date timestamps
+do [
+
+    ; every date exposes its Unix epoch, so it can be compared, stored,
+    ; or handed to anything expecting a plain timestamp
+    d: to :date "1995-02-03T12:00:00+08:00"
+    ensure -> 791784000 = d\timestamp
+    passed
+
+    ; the same instant expressed in different zones has the same timestamp
+    tzA: to :date "2025-06-09T12:00:00+08:00"
+    tzB: to :date "2025-06-09T04:00:00+00:00"
+    ensure -> tzA\timestamp = tzB\timestamp
+    passed
+
+    ; pre-1970 dates give a negative epoch, as they should
+    ;
+    ; Note: we compare against `0 - 2208988800` rather than writing the
+    ; negative literal directly - large negative integer literals currently
+    ; blow up the parser (a pre-existing, date-unrelated bug).
+    old: to :date "1900-01-01T00:00:00+00:00"
+    ensure -> negative? old\timestamp
+    ensure -> (0 - 2208988800) = old\timestamp
+    passed
+
+    ; and past the 32-bit boundary nothing wraps around
+    b1: to :date "2038-01-19T03:14:07+00:00"
+    b2: to :date "2038-01-19T03:14:08+00:00"
+    ensure -> 2147483647 = b1\timestamp
+    ensure -> 2147483648 = b2\timestamp
+    passed
+
+    ; the timestamp difference agrees exactly with the subtraction operator
+    d2: to :date "2025-06-09T12:00:00+08:00"
+    ensure -> (d2\timestamp - d\timestamp) = scalar (d2 - d) --> `s
+    passed
+
+    ; shifting by a large duration keeps the nanosecond tail intact
+    ; (a float-based implementation would silently drop it)
+    base: to :date "2021-03-22T11:25:30+00:00"
+    big: to :quantity @[9007200000000001 `ns]
+    shifted: base + big
+    ensure -> 9007200 = shifted\timestamp - base\timestamp
+    ensure -> 1 = shifted\nanosecond
+    passed
+
+]

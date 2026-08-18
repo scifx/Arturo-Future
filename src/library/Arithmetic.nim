@@ -40,17 +40,21 @@ proc defineModule*(moduleName: string) =
         rule        = InfixPrecedence,
         description = "add given values and return result",
         args        = {
-            "valueA": {Integer,Floating,Complex,Rational,Color,Quantity,Object,Literal,PathLiteral},
-            "valueB": {Integer,Floating,Complex,Rational,Color,Quantity,Object}
+            "valueA": {Integer,Floating,Complex,Rational,Color,Quantity,Date,Object,Literal,PathLiteral},
+            "valueB": {Integer,Floating,Complex,Rational,Color,Quantity,Date,Object}
         },
         attrs       = NoAttrs,
-        returns     = {Integer,Floating,Complex,Rational,Color,Quantity,Object,Nothing},
+        returns     = {Integer,Floating,Complex,Rational,Color,Quantity,Date,Object,Nothing},
         example     = """
             print add 1 2      ; 3
             print 1 + 3        ; 4
             ..........
             a: 4
             add 'a 1           ; a: 5
+            ..........
+            ; adding a time quantity to a date gives us a new date
+            print (to :date "2021-03-22T11:25:30+01:00") + 3`days
+            ; 2021-03-25T11:25:30+01:00
         """:
             #=======================================================
             generateOperationB("add", `+`, `+=`)
@@ -246,17 +250,23 @@ proc defineModule*(moduleName: string) =
         rule        = InfixPrecedence,
         description = "subtract given values and return result",
         args        = {
-            "valueA": {Integer,Floating,Complex,Rational,Color,Quantity,Object,Literal,PathLiteral},
-            "valueB": {Integer,Floating,Complex,Rational,Color,Quantity,Object}
+            "valueA": {Integer,Floating,Complex,Rational,Color,Quantity,Date,Object,Literal,PathLiteral},
+            "valueB": {Integer,Floating,Complex,Rational,Color,Quantity,Date,Object}
         },
         attrs       = NoAttrs,
-        returns     = {Integer,Floating,Complex,Rational,Color,Quantity,Object,Nothing},
+        returns     = {Integer,Floating,Complex,Rational,Color,Quantity,Date,Object,Nothing},
         example     = """
             print sub 2 1      ; 1
             print 5 - 3        ; 2
             ..........
             a: 7
             sub 'a 2           ; a: 5
+            ..........
+            ; subtracting two dates gives us the elapsed time, as a quantity
+            d1: to :date "1995-02-03T12:00:00+08:00"
+            d2: to :date "2025-06-09T12:00:00+08:00"
+            print (d2 - d1) --> `day
+            ; 11084.0`day
         """:
             #=======================================================
             generateOperationB("sub", `-`, `-=`)

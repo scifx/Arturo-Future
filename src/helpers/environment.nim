@@ -23,7 +23,7 @@
 # Libraries
 #=======================================
 
-import std/[os, sequtils, tables]
+import std/[os, tables]
 
 import vm/values/value
 import vm/values/printable

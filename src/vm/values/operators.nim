@@ -20,6 +20,7 @@ when defined(WEB):
 when defined(GMP):
     import helpers/bignums as BignumsHelper
 
+import helpers/datearithmetic
 import helpers/intrinsics
 
 import vm/[globals, errors, stack]
@@ -531,6 +532,33 @@ template objectOperationOrNothing*(operation: string, mgkMeth: MagicMethod, onep
             return invalidOperation(operation)
 
 #=======================================
+# Date helpers
+#=======================================
+
+template ensureTimeQuantity(dateV: Value, quantV: Value, operation: string): untyped =
+    ## a date may only be shifted by a *duration*, not by e.g. 3 meters
+    if unlikely(not isTimeQuantity(quantV.q)):
+        Error_IncompatibleQuantityOperation(
+            operation,
+            Dumper(dateV), Dumper(quantV),
+            "date", getProperty(quantV.q)
+        )
+
+proc dateSubDate(x: Value, y: Value): Value =
+    ## the real elapsed time between two dates, as a `:quantity` in seconds
+    newQuantity(newRational(dateDifference(x.eobj[], y.eobj[])), "s")
+
+proc dateAddQuantity(x: Value, y: Value): Value =
+    ## shift a date forwards by a duration
+    ensureTimeQuantity(x, y, "add")
+    newDate(shiftDate(x.eobj[], y.q))
+
+proc dateSubQuantity(x: Value, y: Value): Value =
+    ## shift a date backwards by a duration
+    ensureTimeQuantity(x, y, "sub")
+    newDate(shiftDate(x.eobj[], y.q, negative=true))
+
+#=======================================
 # Overloads
 #=======================================
 
@@ -571,6 +599,9 @@ proc `+`*(x: Value, y: Value): Value =
         of Quantity   || Floating       :   return newQuantity(x.q + y.f)
         of Quantity   || Rational       :   return newQuantity(x.q + y.rat)
         of Quantity   || Quantity       :   return newQuantity(x.q + y.q)
+
+        of Date       || Quantity       :   return dateAddQuantity(x, y)
+        of Quantity   || Date           :   return dateAddQuantity(y, x)
         else:
             objectOperationOrNothing("add", AddM)
 
@@ -685,6 +716,9 @@ proc `-`*(x: Value, y: Value): Value =
         of Quantity   || Floating       :   return newQuantity(x.q - y.f)
         of Quantity   || Rational       :   return newQuantity(x.q - y.rat)
         of Quantity   || Quantity       :   return newQuantity(x.q - y.q)
+
+        of Date       || Date           :   return dateSubDate(x, y)
+        of Date       || Quantity       :   return dateSubQuantity(x, y)
         else:
             objectOperationOrNothing("sub", SubM)
 

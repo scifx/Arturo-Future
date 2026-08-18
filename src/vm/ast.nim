@@ -288,6 +288,14 @@ proc processBlock*(
     # Optimization
     #------------------------
 
+    func isPlainOne(v: Value): bool {.inline.} =
+        ## is this *literally* the integer 1?
+        ##
+        ## Note: we can't simply use `v == I1` here - the semantic `==`
+        ## compares numeric kinds across the board, so `1`km == 1` is true.
+        ## Folding `x + 1`km` into `inc x` would then silently drop the unit.
+        v.kind == Integer and v.iKind == NormalInteger and v.i == 1
+
     proc optimizeAdd(target: var Node)  =
         var left = target.children[0]
         var right = target.children[1]
@@ -298,14 +306,14 @@ proc processBlock*(
                 hookOptimProfiler("add (CF)")
                 target.replaceNode(newConstant(left.value + right.value))
             # Convert 1 + X -> inc X
-            elif right.kind==VariableLoad and left.kind==ConstantValue and left.value == I1:
+            elif right.kind==VariableLoad and left.kind==ConstantValue and isPlainOne(left.value):
                 hookOptimProfiler("add (inc)")
                 target.op = opInc
                 target.arity = 1
                 target.setOnlyChild(right)
         
         # Convert X + 1 -> inc X
-        elif left.kind==VariableLoad and right.kind==ConstantValue and right.value == I1:
+        elif left.kind==VariableLoad and right.kind==ConstantValue and isPlainOne(right.value):
             hookOptimProfiler("add (inc)")
             target.op = opInc
             target.arity = 1
@@ -363,7 +371,7 @@ proc processBlock*(
             hookOptimProfiler("sub (CF)")
             # Constant folding
             target.replaceNode(newConstant(left.value - right.value))
-        elif left.kind == VariableLoad and right.kind == ConstantValue and right.value == I1:
+        elif left.kind == VariableLoad and right.kind == ConstantValue and isPlainOne(right.value):
             hookOptimProfiler("sub (dec)")
             # Convert X - 1 -> dec X
             target.op = opDec
