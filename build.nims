@@ -75,35 +75,6 @@ func silentCompilation(config: BuildConfig): bool =
 func webVersion(config: BuildConfig): bool =
     config.version == "@web"
 
-proc hasCompilerDefine(name: string): bool =
-    flags.contains("--define:" & name) or flags.contains("-d:" & name) or flags.contains(name)
-
-proc addCompilerDefine(name: string) =
-    if not hasCompilerDefine(name):
-        flags.add("--define:" & name)
-
-proc removeCompilerDefine(name: string) =
-    if flags.len == 0:
-        return
-
-    for idx in countdown(flags.high, 0):
-        if flags[idx] in ["--define:" & name, "-d:" & name, name]:
-            flags.delete(idx)
-
-proc noWebview(): bool =
-    hasCompilerDefine("NOWEBVIEW") or hasCompilerDefine("NOUI")
-
-proc disableWebview() =
-    removeCompilerDefine("WEBVIEW")
-    addCompilerDefine("NOWEBVIEW")
-
-proc disableUi() =
-    for name in ["DIALOGS", "WEBVIEW"]:
-        removeCompilerDefine(name)
-
-    addCompilerDefine("NOUI")
-    addCompilerDefine("NOWEBVIEW")
-
 func buildConfig(): BuildConfig =
     (
         binary:             "bin/arturo".toExe,
@@ -216,7 +187,7 @@ proc compile*(config: BuildConfig, showFooter: bool = false): int
     result = QuitSuccess
 
     if "windows" == hostOS:
-        if config.isDeveloper and not noWebview():
+        if config.isDeveloper and not flags.contains("NOWEBVIEW"):
             discard gorgeEx "src\\extras\\webview\\deps\\build.bat"
             #discard gorgeEx "src\\extras\\webview\\deps\\build-new.bat"
 
@@ -269,7 +240,7 @@ proc installAll*(config: BuildConfig, targetFile: string) =
 
         if hostOS != "windows":
             giveBinaryPermission(targetFile)
-        elif not noWebview():
+        else:
             copyWebView()
 
         log fmt"deployed to: {targetDir}"
@@ -458,8 +429,6 @@ cmd build, "[default] Build arturo and optionally install the executable":
     ##     --log -l                     shows compilation logs
     ##     --raw                        disables compression
     ##     --release                    enable release config mode
-    ##     --no-ui                      excludes native Ui dialogs and webview, keeps clipboard
-    ##     --no-webview                 excludes only the webview component
     ##     --help
 
     let
@@ -547,11 +516,6 @@ cmd build, "[default] Build arturo and optionally install the executable":
 
     if args.hasFlag("release"):
         releaseConfig()
-
-    if args.hasFlag("no-ui"):
-        disableUi()
-    elif args.hasFlag("no-webview"):
-        disableWebview()
 
     config.buildArturo(targetDir/config.binary)
 

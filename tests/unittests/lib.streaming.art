@@ -1,0 +1,95 @@
+topic: $[topic :string] -> print ~"\n>> |topic|"
+passed: $[] -> print "[+] passed!"
+
+topic "execute.stream - basics"
+do [
+    ; a stream is a plain :iterator, nothing new
+    s: execute.stream "printf 'a\nb\nc\n'"
+    ensure -> iterator? s
+    ensure -> equal? to :block s ["a" "b" "c"]
+    passed
+
+    ; the exit code lands on the iterator once it's drained
+    ok: execute.stream "exit 0"
+    drain ok
+    ensure -> equal? ok\exit 0
+
+    bad: execute.stream "exit 3"
+    drain bad
+    ensure -> equal? bad\exit 3
+    passed
+
+    ; stderr is folded into stdout, just like plain `execute`
+    e: execute.stream "echo out; echo err 1>&2"
+    ensure -> equal? sort to :block e ["err" "out"]
+    passed
+
+    ; a final line without a trailing newline is still a line
+    n: execute.stream "printf 'no-newline'"
+    ensure -> equal? to :block n ["no-newline"]
+    passed
+
+    ; empty output yields an empty stream
+    z: execute.stream "true"
+    ensure -> equal? to :block z []
+    passed
+]
+
+topic "execute.stream - laziness"
+do [
+    ; `take` must not need the whole (here: infinite) output
+    inf: execute.stream "yes hello"
+    ensure -> equal? take inf 3 ["hello" "hello" "hello"]
+    unplug inf
+    passed
+
+    ; `unplug` is idempotent and marks the stream exhausted
+    unplug inf
+    ensure -> empty? inf
+    passed
+
+    ; next / peek behave like on any other iterator
+    p: execute.stream "printf 'one\ntwo\n'"
+    ensure -> equal? peek p "one"
+    ensure -> equal? next p "one"
+    ensure -> equal? next p "two"
+    ensure -> null? next p
+    passed
+]
+
+topic "execute.stream - composition"
+do [
+    ; streams flow through the normal lazy pipeline operators
+    hits: execute.stream "printf 'x1\nERROR one\nx2\nERROR two\nx3\n'"
+        | select.iterator 'l -> contains? l "ERROR"
+    ensure -> equal? @hits ["ERROR one" "ERROR two"]
+    passed
+
+    ; ...and through eager consumers
+    ensure -> equal? size to :block execute.stream "printf '1\n2\n3\n4\n5\n'" 5
+    passed
+
+    ; map over a stream
+    ups: execute.stream "printf 'ab\ncd\n'"
+        | map.iterator 'l -> upper l
+    ensure -> equal? @ups ["AB" "CD"]
+    passed
+]
+
+topic "execute.stream - buffer mode"
+do [
+    b: execute.stream.buffer:4 "printf 'abcdefghij'"
+    ensure -> equal? join to :block b "abcdefghij"
+    passed
+]
+
+topic "execute - unchanged defaults"
+do [
+    ; without `.stream`, everything behaves exactly as before
+    ensure -> string? execute "echo classic"
+    ensure -> equal? strip execute "echo classic" "classic"
+    ensure -> dictionary? execute.code "echo x"
+    withCode: execute.code "echo x"
+    ensure -> equal? withCode\code 0
+    passed
+]

@@ -1,0 +1,70 @@
+; Manual/network check for `request.stream`.
+; Needs `python3 tools/stream_test_server.py 18980` running alongside.
+
+base: "http://127.0.0.1:18980"
+fails: 0
+check: function [label cond][
+    if cond -> print ["[+]" label]
+    if not? cond [
+        print ["[!] FAILED:" label]
+        fails: fails + 1
+    ]
+]
+
+print "\n>> request.stream - response shape"
+r: request.stream base ++ "/big" ø
+check "keys unchanged"     -> equal? keys r ["version" "body" "headers" "status"]
+check "status parsed"      -> equal? r\status 200
+check "headers parsed"     -> equal? get r\headers "x-test" "arturo"
+check "body is :iterator"  -> iterator? r\body
+check "body streams lines" -> equal? size @r\body 20
+
+print "\n>> request.stream - headers land before body completes"
+t0: now
+r2: request.stream base ++ "/lines" ø
+headerTime: (to :integer now) - to :integer t0
+lines: @r2\body
+check "5 lines received"   -> equal? size lines 5
+check "content correct"    -> equal? lines ["line1" "line2" "line3" "line4" "line5"]
+; the server sleeps 200ms between lines, so a full read takes ~1s;
+; the headers must come back well before that
+check "headers arrived early (<1s)" -> headerTime < 1
+
+print "\n>> request.stream.events - SSE"
+r3: request.stream.events base ++ "/sse" ø
+evs: @r3\body
+check "5 events (4 tokens + DONE)" -> equal? size evs 5
+check "event name parsed"          -> equal? evs\0\event "token"
+check "data parsed"                -> equal? evs\0\data "tok1"
+check "id parsed"                  -> equal? evs\0\id "1"
+check "terminator seen"            -> equal? evs\4\data "[DONE]"
+
+print "\n>> request.stream.events - multiline data & comments"
+r4: request.stream.events base ++ "/multiline-sse" ø
+evs2: @r4\body
+check "comment-only frame dropped" -> equal? size evs2 1
+check "multiline data joined"      -> equal? evs2\0\data "part one\npart two"
+
+print "\n>> request.stream - early abandon"
+r5: request.stream base ++ "/endless" ø
+check "take from endless stream"   -> equal? take r5\body 3 ["forever" "forever" "forever"]
+unplug r5\body
+check "unplugged stream is empty"  -> empty? r5\body
+
+print "\n>> request.stream - lazy pipeline"
+r6: request.stream base ++ "/big" ø
+picked: r6\body | select.iterator 'l -> contains? l "row1"
+check "lazy select over network"   -> equal? take picked 3 ["row1" "row10" "row11"]
+unplug r6\body
+
+print "\n>> request - unchanged defaults"
+r8: request base ++ "/big" ø
+check "plain body is :string"      -> string? r8\body
+check "plain status still parsed"  -> equal? r8\status 200
+
+print ""
+if zero? fails -> print "ALL NETWORK CHECKS PASSED"
+if not? zero? fails [
+    print [fails "CHECK(S) FAILED"]
+    panic "network checks failed"
+]

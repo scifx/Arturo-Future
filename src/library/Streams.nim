@@ -25,6 +25,7 @@ when not defined(WEB):
     import std/net as netsock except Socket
     import nativesockets
 
+    import helpers/iteratorstate
     import helpers/parallelism
 
     import vm/lib
@@ -292,9 +293,9 @@ proc defineModule*(moduleName: string) =
             alias       = unaliased,
             op          = opNop,
             rule        = PrefixPrecedence,
-            description = "close given socket or channel",
+            description = "close given socket, channel or stream",
             args        = {
-                "target"    : {Socket,Channel}
+                "target"    : {Socket,Channel,Object}
             },
             attrs       = NoAttrs,
             returns     = {Nothing},
@@ -311,10 +312,20 @@ proc defineModule*(moduleName: string) =
             ; close a channel, parked recvs wake with :null, sends fail
             Jobs: channel 'jobs
             unplug Jobs
+            ..........
+            ; stop pulling from a stream and release what's behind it
+            ; (here: terminate the child process)
+            s: execute.stream "yes"
+            print take s 3
+            unplug s
             """:
                 #=======================================================
                 if x.kind == Channel:
                     chanClose(x.chn)
+                elif x.kind == Object:
+                    if not isIteratorObject(x):
+                        Error_OperationNotPermitted("`unplug` expects a :socket, :channel or :iterator value")
+                    closeIterator(x)
                 else:
                     x.sock.socket.close()
 

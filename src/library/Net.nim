@@ -60,6 +60,7 @@ when not defined(WEB):
     import helpers/net as netHelper
     import helpers/parallelism
     import helpers/servers
+    import helpers/streaming
     import helpers/strings
     import helpers/terminal
     import helpers/url
@@ -225,7 +226,10 @@ proc defineModule*(moduleName: string) =
                 "proxy"         : ({String},"use given proxy url"),
                 "certificate"   : ({String},"use SSL certificate at given path"),
                 "raw"           : ({Logical},"return raw response without processing"),
-                "async"         : ({Logical},"perform request asynchronously and return a `:task`")
+                "async"         : ({Logical},"perform request asynchronously and return a `:task`"),
+                "stream"        : ({Logical},"return as soon as the headers arrive, with `\\body` as a lazy iterator of lines"),
+                "events"        : ({Logical},"with `.stream`, yield parsed server-sent events instead of lines"),
+                "buffer"        : ({Integer},"with `.stream`, yield raw chunks as received instead of lines")
             },
             returns     = {Dictionary,Null,Task},
             example     = """
@@ -260,6 +264,27 @@ proc defineModule*(moduleName: string) =
             ..........
             print request.post "https://httpbin.org/post" #[some:"arg" another: 123]
             ; ...same as above...
+            ..........
+            ; stream a large response: we get the headers immediately,
+            ; and `\body` is a lazy iterator of lines
+            r: request.stream "https://example.com/big.txt" ø
+            print r\status
+            loop r\body 'line -> print line
+            ..........
+            ; consume an AI/SSE token stream as it is generated
+            r: request.stream.events.post.json
+                 "https://api.openai.com/v1/chat/completions"
+                 #[model: "gpt-4o" stream: true messages: @[#[role:"user" content:"hi"]]]
+
+            loop r\body 'ev [
+                if ev\data <> "[DONE]" ->
+                    prints (read.json ev\data)\choices\0\delta\content
+            ]
+            ..........
+            ; stop early - the connection is closed for us
+            r: request.stream "https://example.com/endless" ø
+            print take r\body 5
+            unplug r\body
             """:
                 #=======================================================
                 var url = x.s
@@ -312,6 +337,85 @@ proc defineModule*(moduleName: string) =
                             url &= "?" & parts.join("&")
                         elif yKind==String:
                             url &= "?" & y.s
+
+                # `.stream` -> return once the headers land, with a lazy `\body`
+                let bufferVal = popAttr("buffer")
+                if hadAttr("stream"):
+                    if hadAttr("async"):
+                        Error_OperationNotPermitted("`.stream` cannot combine with `.async` - it already returns before the body is read")
+
+                    var unit = StreamLines
+                    if hadAttr("events"):
+                        unit = StreamEvents
+                    if not bufferVal.isNil and bufferVal.kind != Null:
+                        if unit == StreamEvents:
+                            Error_OperationNotPermitted("`.buffer:` cannot combine with `.events`")
+                        if bufferVal.kind != Integer or bufferVal.i < 1:
+                            Error_OperationNotPermitted("`.buffer:` expects a positive integer")
+                        unit = StreamBuffer
+
+                    var streamClient: AsyncHttpClient
+                    if checkAttr("certificate"):
+                        when defined(ssl):
+                            streamClient = newAsyncHttpClient(
+                                userAgent = agent,
+                                sslContext = newContext(certFile=aCertificate.s),
+                                proxy = proxy,
+                                headers = headers
+                            )
+                        else:
+                            streamClient = newAsyncHttpClient(
+                                userAgent = agent,
+                                proxy = proxy,
+                                headers = headers
+                            )
+                    else:
+                        when defined(ssl):
+                            streamClient = newAsyncHttpClient(
+                                userAgent = agent,
+                                sslContext = newContext(verifyMode = CVerifyNone),
+                                proxy = proxy,
+                                headers = headers
+                            )
+                        else:
+                            streamClient = newAsyncHttpClient(
+                                userAgent = agent,
+                                proxy = proxy,
+                                headers = headers
+                            )
+
+                    try:
+                        let respFut = streamClient.request(url = url, httpMethod = meth,
+                                                           body = body, multipart = multipart)
+                        var resp: AsyncResponse
+                        if timeout > 0:
+                            if not coopWait(withTimeout(respFut, timeout)):
+                                try: streamClient.close()
+                                except CatchableError: discard
+                                Error_OperationNotPermitted("`request.stream` timed out after " & $timeout & "ms")
+                            resp = respFut.read()
+                        else:
+                            resp = coopWait(respFut)
+
+                        push httpResponseToValue(
+                            resp.version,
+                            newHttpStreamIterator(streamClient, resp, unit),
+                            resp.status,
+                            resp.headers,
+                            hadAttr("raw")
+                        )
+                    except VError:
+                        raise
+                    except CatchableError:
+                        try: streamClient.close()
+                        except CatchableError: discard
+                        push(VNULL)
+                    return
+
+                if not bufferVal.isNil and bufferVal.kind != Null:
+                    Error_OperationNotPermitted("`.buffer:` only makes sense together with `.stream`")
+                if hadAttr("events"):
+                    Error_OperationNotPermitted("`.events` only makes sense together with `.stream`")
 
                 let explicitAsync = hadAttr("async")
                 if explicitAsync or not onMainFiber():
