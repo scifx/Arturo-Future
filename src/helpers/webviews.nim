@@ -10,8 +10,14 @@
 # Libraries
 #=======================================
 
-import os, osproc, strutils
+import os, strutils
 import vm/errors
+
+when defined(posix):
+    import posix
+
+when defined(windows):
+    import osproc
 
 when defined(WEBVIEW):
     import std/json
@@ -137,8 +143,68 @@ proc openChromeWindow*(port: int, flags: seq[string] = @[]) =
         Error_CompatibleBrowserNotFound()
     else:
         let command = chromePath.replace(" ", r"\ ") & " " & args.join(" ")
-        if execCmd(command) != 0:
-            Error_CompatibleBrowserCouldNotOpenWindow()
+
+        # launch the browser WITHOUT blocking the caller:
+        #
+        # `execCmd` here would wait for the window to close, stalling
+        # everything (`serve .chrome` would only start serving after
+        # the user closes the browser!). the browser is launched fully
+        # detached instead - its lifetime is none of our business and
+        # the server must never depend on a GUI window staying open.
+        when defined(posix):
+            # pre-build everything in the parent, so nothing has to be
+            # allocated after fork (fork-safety inside a threaded VM)
+            let shellCmd = "exec " & command & " >/dev/null 2>&1 </dev/null"
+
+            let shPath = "/bin/sh".cstring
+            let shArg0 = "sh".cstring
+            let shArgC = "-c".cstring
+            let shCmdC = shellCmd.cstring
+
+            let pid = fork()
+
+            if pid == Pid(0):
+                # first child: break free of the server's session &
+                # process group, so Ctrl+C on the server can't reach
+                # the browser window
+                discard setsid()
+
+                let pid2 = fork()
+
+                if pid2 == Pid(0):
+                    # grandchild: the actual browser, fully detached -
+                    # stdio goes to /dev/null so it can never block on
+                    # a pipe we're not reading
+                    discard execle(shPath, shArg0, shArgC, shCmdC, nil, nil)
+
+                    # execle failed - exit quietly, there's nobody left
+                    # to report it to anyway
+                    exitnow(127)
+
+                # middle child has done its job: exit right away so the
+                # browser gets re-parented to init and reaped on its own
+                exitnow(0)
+
+            elif pid > Pid(0):
+                # reap the middle child - it exits the moment it forks,
+                # so this never blocks meaningfully
+                var exitStatus: cint
+                discard waitpid(pid, exitStatus, 0)
+            else:
+                Error_CompatibleBrowserCouldNotOpenWindow()
+        elif defined(windows):
+            # CreateProcess without waiting - the browser runs on its own.
+            # `poDaemon` adds CREATE_NO_WINDOW, so no console window pops
+            # up. dropping the returned handle is safe: it does not
+            # terminate the child process.
+            try:
+                discard startProcess(command,
+                                     options = {poUsePath, poEvalCommand, poDaemon})
+            except OSError:
+                Error_CompatibleBrowserCouldNotOpenWindow()
+        else:
+            # no meaningful way to open a browser window here
+            discard
 
 when defined(WEBVIEW):
 

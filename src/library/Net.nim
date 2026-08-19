@@ -632,18 +632,19 @@ proc defineModule*(moduleName: string) =
                             "subprocess execution, use block-form routes (e.g. `[GET \"/\" -> \"ok\"]`) or drop `.async` for sync mode"
                         )
 
-                    if hadAttr("chrome"):
-                        openChromeWindow(port)
-
                     var attrParts = "serve.port: " & $port
                     if not verbose: attrParts &= " .silent"
+
+                    if hadAttr("chrome"):
+                        # forward `.chrome` to the child: it opens the window
+                        # itself, right before *its* server starts listening.
+                        # the parent must not block on a browser window.
+                        attrParts &= " .chrome"
+
                     let childSrc = attrParts & " " & codify(routes)
 
                     push spawnAsTask(childSrc)
                     return
-
-                if hadAttr("chrome"):
-                    openChromeWindow(port)
 
                 if routes.kind != Function:
                     # necessary so that "serveInternal" is available
@@ -792,5 +793,12 @@ proc defineModule*(moduleName: string) =
                 # if we're on .verbose mode
                 if verbose:
                     echo " :: Starting server on port " & $(port) & "...\n"
+
+                # `.chrome` opens the server in a Chrome app window.
+                # it's launched non-blockingly (see `openChromeWindow`),
+                # right before the server starts listening, so serving
+                # is never stalled by the browser window's lifetime.
+                if hadAttr("chrome"):
+                    openChromeWindow(port)
                 
                 startServer(requestHandler.RequestHandler, port)
