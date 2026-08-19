@@ -211,41 +211,46 @@ proc setShortcut*(item: MenuItem, shortcut: string) =
     if item.kind == NormalItem:
         item.shortcut = shortcut
 
+proc bindMenuItem(cMenu: ptr MenuObj, item: MenuItem): ptr MenuItemObj =
+    ## One stable identity per item. The old code keyed every callback on
+    ## `userData` (always nil), so Windows fired the last Share action
+    ## for Facebook, Twitter and Instagram alike.
+    let ident = cast[pointer](item)
+    if item.action != nil:
+        menuCallbacks[ident] = item.action
+    result = add_menu_item(
+        cMenu,
+        item.label.cstring,
+        if item.action != nil: menuCallbackWrapper else: nil
+    )
+    result.userData = ident
+    if item.shortcut.len > 0:
+        set_menu_item_shortcut(result, item.shortcut.cstring)
+    set_menu_item_checked(result, item.checked)
+    set_menu_item_enabled(result, item.action != nil and item.enabled)
+
+proc populateCMenu(cMenu: ptr MenuObj, menu: Menu) =
+    for item in menu.items:
+        case item.kind
+        of NormalItem:
+            discard bindMenuItem(cMenu, item)
+        of SeparatorItem:
+            discard add_menu_separator(cMenu)
+        of SubmenuItem:
+            let submenuPtr = create_menu(item.submenu.title.cstring)
+            populateCMenu(submenuPtr, item.submenu)
+            discard add_submenu(cMenu, item.submenuLabel.cstring, submenuPtr)
+
 proc setMenus*(w: Window, menus: openArray[Menu]) =
+    if menus.len == 0:
+        remove_window_menu(w)
+        return
+
     var cMenus = newSeq[ptr MenuObj](menus.len)
-    
+
     for i, menu in menus:
         cMenus[i] = create_menu(menu.title.cstring)
-        
-        for item in menu.items:
-            case item.kind
-            of NormalItem:
-                if item.action != nil:
-                    menuCallbacks[item.userData] = item.action
-                    
-                let cItem = add_menu_item(cMenus[i], 
-                    item.label.cstring,
-                    if item.action != nil: menuCallbackWrapper else: nil)
-                
-                # Only enable if there's an action
-                set_menu_item_enabled(cItem, item.action != nil)
-            
-            of SeparatorItem:
-                discard add_menu_separator(cMenus[i])
-                
-            of SubmenuItem:
-                let submenuPtr = create_menu(item.submenu.title.cstring)
-                
-                for subitem in item.submenu.items:
-                    if subitem.action != nil:
-                        menuCallbacks[subitem.userData] = subitem.action
-                    let subitemPtr = add_menu_item(submenuPtr,
-                        subitem.label.cstring,
-                        if subitem.action != nil: menuCallbackWrapper else: nil)
-                    # Only enable submenu items with actions
-                    set_menu_item_enabled(subitemPtr, subitem.action != nil)
-                
-                discard add_submenu(cMenus[i], item.submenuLabel.cstring, submenuPtr)
+        populateCMenu(cMenus[i], menu)
 
     set_window_menu(w, cast[ptr ptr MenuObj](addr cMenus[0]), cMenus.len.csize_t)
 

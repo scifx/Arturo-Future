@@ -209,6 +209,7 @@ Relative to upstream, already merged here and backed by tests or design notes:
 - [x] Termux / Android build experiments (`build.sh`, `termux` branch; upstream [#1971](https://github.com/arturo-lang/arturo/issues/1971))
 - [x] Malformed-input stress tests: `tests/robustness_malformed.py`, `tests/robustness_fuzz_prefixes.py`
 - [x] Iterator / file / real-world unit tests and benchmark scripts
+- [x] Windows `webview`: `arturo.call` / `arturo.exec` work on the first load, leftover File/Share menu removed, complex return values reach the page (upstream [#2209](https://github.com/arturo-lang/arturo/issues/2209))
 
 Design and validation notes:
 
@@ -218,6 +219,7 @@ Design and validation notes:
 - [docs/streaming-design.md](docs/streaming-design.md)
 - [docs/robustness-workboard.md](docs/robustness-workboard.md)
 - [docs/robustness-validation-report.md](docs/robustness-validation-report.md)
+- [docs/webview-windows-fix.md](docs/webview-windows-fix.md)
 
 ---
 

@@ -1,85 +1,86 @@
-// Initialize the main wrapper & set up callbacks
-if (typeof arturo === 'undefined') {
-    arturo = {
-        // call backend method with given arguments
-        call: (method, ...args) => {
-            return window.callback("call", JSON.stringify({
-                "method": method,
-                "args": args
-            }))
-        },
+// Arturo <-> page bridge.
+// Keep this conservative (ES5): it is injected before the first document
+// on every backend, including older WebView2 builds.
+(function (root) {
+    "use strict";
 
-        // execute arbitrary arturo code in backend
-        exec: (code) => {
-            return window.callback("exec", JSON.stringify(code))
-        },
-
-        // window state management
-        // this could be part of Águila!!
-        window: {
-            // Minimized state
-            get minimized() {
-                return JSON.parse(arturo.exec("window\\minimized?"))
-            },
-            set minimized(value) {
-                arturo.exec(`window\\minimized?: ${value}`)
-            },
-
-            // Minimizable state
-            get minimizable() {
-                return JSON.parse(arturo.exec("window\\minimizable?"))
-            },
-            set minimizable(value) {
-                arturo.exec(`window\\minimizable?: ${value}`)
-            },
-
-            // Maximized state
-            get maximized() {
-                return JSON.parse(arturo.exec("window\\maximized?"))
-            },
-            set maximized(value) {
-                arturo.exec(`window\\maximized?: ${value}`)
-            },
-
-            // Maximizable state
-            get maximizable() {
-                return JSON.parse(arturo.exec("window\\maximizable?"))
-            },
-            set maximizable(value) {
-                arturo.exec(`window\\maximizable?: ${value}`)
-            },
-
-            // Closable state
-            get closable() {
-                return JSON.parse(arturo.exec("window\\closable?"))
-            },
-            set closable(value) {
-                arturo.exec(`window\\closable?: ${value}`)
-            },
-
-            // Focused state
-            get focused() {
-                return JSON.parse(arturo.exec("window\\focused?"))
-            },
-            set focused(value) {
-                arturo.exec(`window\\focused?: ${value}`)
-            },
-
-            // Visible state
-            get visible() {
-                return JSON.parse(arturo.exec("window\\visible?"))
-            },
-            set visible(value) {
-                arturo.exec(`window\\visible?: ${value}`)
-            },
-
-            // Fullscreen state
-            get fullscreen() {
-                return JSON.parse(arturo.exec("window\\fullscreen?"))
-            },
-            set fullscreen(value) {
-                arturo.exec(`window\\fullscreen?: ${value}`)
-            }
-        }
+    if (root.arturo && typeof root.arturo.call === "function") {
+        return;
     }
-}
+
+    var CALLBACK_WAIT_MS = 25;
+    var CALLBACK_WAIT_TICKS = 200;
+
+    function whenCallbackReady() {
+        if (typeof root.callback === "function") {
+            return Promise.resolve();
+        }
+        return new Promise(function (resolve, reject) {
+            var ticks = 0;
+            var timer = root.setInterval(function () {
+                if (typeof root.callback === "function") {
+                    root.clearInterval(timer);
+                    resolve();
+                    return;
+                }
+                ticks += 1;
+                if (ticks > CALLBACK_WAIT_TICKS) {
+                    root.clearInterval(timer);
+                    reject(new Error("arturo cannot be loaded"));
+                }
+            }, CALLBACK_WAIT_MS);
+        });
+    }
+
+    function invoke(mode, payload) {
+        var encoded = JSON.stringify(payload);
+        if (typeof root.callback === "function") {
+            return root.callback(mode, encoded);
+        }
+        return whenCallbackReady().then(function () {
+            return root.callback(mode, encoded);
+        });
+    }
+
+    function execCode(code) {
+        return invoke("exec", code);
+    }
+
+    root.arturo = {
+        call: function (method) {
+            var args = Array.prototype.slice.call(arguments, 1);
+            return invoke("call", {
+                method: method,
+                args: args
+            });
+        },
+
+        exec: execCode,
+
+        window: {
+            get minimized() { return execCode("window\\minimized?"); },
+            set minimized(value) { execCode("window\\minimized?: " + value); },
+
+            get minimizable() { return execCode("window\\minimizable?"); },
+            set minimizable(value) { execCode("window\\minimizable?: " + value); },
+
+            get maximized() { return execCode("window\\maximized?"); },
+            set maximized(value) { execCode("window\\maximized?: " + value); },
+
+            get maximizable() { return execCode("window\\maximizable?"); },
+            set maximizable(value) { execCode("window\\maximizable?: " + value); },
+
+            get closable() { return execCode("window\\closable?"); },
+            set closable(value) { execCode("window\\closable?: " + value); },
+
+            get focused() { return execCode("window\\focused?"); },
+            set focused(value) { execCode("window\\focused?: " + value); },
+
+            get visible() { return execCode("window\\visible?"); },
+            set visible(value) { execCode("window\\visible?: " + value); },
+
+            get fullscreen() { return execCode("window\\fullscreen?"); },
+            set fullscreen(value) { execCode("window\\fullscreen?: " + value); }
+        }
+    };
+})(typeof window !== "undefined" ? window : this);

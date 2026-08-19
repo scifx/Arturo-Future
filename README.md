@@ -209,6 +209,7 @@ loop r\body 'ev [
 - [x] Termux / Android 构建实验（`build.sh`、`termux` 分支；对应上游 [#1971](https://github.com/arturo-lang/arturo/issues/1971)）
 - [x] 畸形输入压力测试：`tests/robustness_malformed.py`、`tests/robustness_fuzz_prefixes.py`
 - [x] 迭代器 / 文件 / 现实场景单测与基准脚本
+- [x] Windows `webview`：第一次打开就能调 `arturo.call` / `arturo.exec`，去掉误留的 File/Share 菜单，复杂返回值能回到页面（对应上游 [#2209](https://github.com/arturo-lang/arturo/issues/2209)）
 
 设计与验证笔记：
 
@@ -218,6 +219,7 @@ loop r\body 'ev [
 - [docs/streaming-design.md](docs/streaming-design.md)
 - [docs/robustness-workboard.md](docs/robustness-workboard.md)
 - [docs/robustness-validation-report.md](docs/robustness-validation-report.md)
+- [docs/webview-windows-fix.md](docs/webview-windows-fix.md)
 
 ---
 
@@ -245,8 +247,9 @@ loop r\body 'ev [
 | [#2211](https://github.com/arturo-lang/arturo/issues/2211) REPL 多字节输入损坏 | 修复 UTF-8 编辑路径 |
 | [#1971](https://github.com/arturo-lang/arturo/issues/1971) Termux 编译失败 | `build.sh` + `termux` 实验分支 |
 | [#1972](https://github.com/arturo-lang/arturo/issues/1972) 循环性能 / 大数据 | 惰性 iterator，早停场景内存和延迟都下来了 |
+| [#2209](https://github.com/arturo-lang/arturo/issues/2209) Windows webview 首次加载 / 菜单 / 复杂返回值 | 先 bind 再导航；拆掉演示菜单；JSON 回包保活 |
 
-其余仍开放的（闭包、glob、`env` 可写、stdin/stdout/stderr、日期差值、`serve` POST 崩溃、Windows webview、`read.json` 安全等）是我自己的问题清单。有进展会写进「已添加」；具体下一步只记在上面的空列表里。
+其余仍开放的（闭包、glob、`env` 可写、stdin/stdout/stderr、日期差值、`serve` POST 崩溃、`read.json` 安全等）是我自己的问题清单。有进展会写进「已添加」；具体下一步只记在上面的空列表里。
 
 完整列表：<https://github.com/arturo-lang/arturo/issues?q=is%3Aissue%20author%3Ascifx>
 

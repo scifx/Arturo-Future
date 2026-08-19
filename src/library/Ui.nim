@@ -300,21 +300,31 @@ proc defineModule*(moduleName: string) =
                 callHandler = proc (call: WebviewCallKind, value: Value): Value =
                     result = VNULL
                     if call==FunctionCall:
-                        if SymExists(value.d["method"].s) and GetSym(value.d["method"].s).kind==Function:
-                            let prevSP = SP
+                        try:
+                            if value.kind == Dictionary and value.d.hasKey("method"):
+                                let methodName = value.d["method"].s
+                                if SymExists(methodName) and GetSym(methodName).kind==Function:
+                                    let prevSP = SP
+                                    let fun = GetSym(methodName)
+                                    var args: ValueArray
+                                    if value.d.hasKey("args") and value.d["args"].kind == Block:
+                                        args = value.d["args"].a
+                                    for v in args.reversed:
+                                        push(v)
 
-                            let fun = GetSym(value.d["method"].s)
-                            for v in value.d["args"].a.reversed:
-                                push(v)
+                                    if fun.fnKind==UserFunction:
+                                        let fid = hash(methodName)
+                                        execFunction(fun, fid)
+                                    else:
+                                        fun.action()()
 
-                            if fun.fnKind==UserFunction:
-                                let fid = hash(value.d["method"].s)
-                                execFunction(fun, fid)
-                            else:
-                                fun.action()()
-
-                            if SP > prevSP:
-                                result = stack.pop()
+                                    if SP > prevSP:
+                                        result = stack.pop()
+                        except VError as e:
+                            showError(e)
+                        except CatchableError, Defect:
+                            let e = getCurrentException()
+                            showError(VError(e))
 
                     elif call==ExecuteCode:
                         try:
@@ -329,7 +339,7 @@ proc defineModule*(moduleName: string) =
                         except CatchableError, Defect:
                             let e = getCurrentException()
                             showError(VError(e))
-                        
+
                     elif call==WebviewEvent:
                         if (let onEvent = on.getOrDefault(value.s, nil); not onEvent.isNil):
                             execUnscoped(onEvent)
@@ -350,7 +360,6 @@ proc defineModule*(moduleName: string) =
                 example     = """
                 """:
                     #=======================================================
-                    echo "in old eval: " & $(x.s)
                     wv.evaluate(x.s)
 
             # necessary so that "__webviewWindow" is available

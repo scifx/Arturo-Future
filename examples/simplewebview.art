@@ -1,0 +1,65 @@
+; Tiny webview sample — discussion #2208 / issue #2209
+;
+; Use `.debug` if you want to right-click inside the window
+; and pick "Inspect" for the developer tools.
+
+greet: function [name][
+    ~"hello " ++ name
+]
+
+stats: function [n][
+    #[
+        n:        n
+        doubled:  n * 2
+        odd?:     odd? n
+        items:    @1..n
+        label:    "统计"
+    ]
+]
+
+webview.debug .title: "Arturo" .width: 480 .height: 360 {!html
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <title>Arturo webview</title>
+    </head>
+    <body>
+        <h1>This is a simple webview</h1>
+        <p>
+            <a href="#" onclick="printHello(); return false;">Click me</a>
+        </p>
+        <pre id="out"></pre>
+        <script>
+            function show(label, value) {
+                var el = document.getElementById("out");
+                el.textContent += label + ": " + JSON.stringify(value) + "\n";
+                console.log(label, value);
+            }
+
+            function printHello() {
+                if (!window.arturo) {
+                    console.error("arturo cannot be loaded");
+                    return;
+                }
+
+                arturo.exec('print "Hello from the webview!"');
+
+                arturo.call("odd?", 123).then(function (result) {
+                    show("odd?", result);
+                });
+
+                arturo.call("greet", "Arturo").then(function (result) {
+                    show("greet", result);
+                });
+
+                arturo.call("stats", 5).then(function (result) {
+                    show("stats", result);
+                }).catch(function (err) {
+                    console.error(err);
+                });
+            }
+        </script>
+    </body>
+    </html>
+}

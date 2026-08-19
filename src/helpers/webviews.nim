@@ -142,40 +142,104 @@ proc openChromeWindow*(port: int, flags: seq[string] = @[]) =
 
 when defined(WEBVIEW):
 
-    # proc startWebView*(content: string): Webview =
-    #     result = webview_create(1)
-    #     result.webview_set_title("This is a - successful - test".cstring)
-    #     result.webview_set_size(320.cint, 480.cint, Default)
-    #     result.webview_set_html(content.cstring)
-    #     result.webview_run()
-    #     result.webview_destroy()
+    proc normalizeWebviewNewlines*(html: string): string =
+        ## WebView2 + `{...}` curly strings on Windows inject CR LF.
+        ## Keep a single LF so inline `<script>` stays valid everywhere.
+        result = newStringOfCap(html.len)
+        var i = 0
+        while i < html.len:
+            if html[i] == '\r':
+                result.add('\n')
+                if i + 1 < html.len and html[i + 1] == '\n':
+                    inc i
+            else:
+                result.add(html[i])
+            inc i
 
-    proc newWebView*(title       : string                = "Arturo", 
-                     content     : string                = "", 
-                     width       : int                   = 640, 
-                     height      : int                   = 480, 
-                     resizable   : bool                  = true, 
+    proc looksLikeHtmlDocument*(html: string): bool =
+        var i = 0
+        while i < html.len and html[i] in {' ', '\t', '\n', '\r'}:
+            inc i
+        if i >= html.len:
+            return false
+        let head = html[i .. min(html.high, i + 20)].toLowerAscii()
+        result = head.startsWith("<!doctype") or head.startsWith("<html")
+
+    proc prepareWebviewHtml*(html: string): string =
+        ## Make a fragment a real UTF-8 document. Full pages are left alone
+        ## (apart from newline normalization). Init scripts still do the
+        ## real bridge work; this only gives WebView2 a stable first load.
+        let src = normalizeWebviewNewlines(html)
+        if looksLikeHtmlDocument(src):
+            return src
+        result = "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n</head>\n<body>\n"
+        result.add(src)
+        result.add("\n</body>\n</html>\n")
+
+    proc newWebView*(title       : string                = "Arturo",
+                     content     : string                = "",
+                     width       : int                   = 640,
+                     height      : int                   = 480,
+                     resizable   : bool                  = true,
                      maximized   : bool                  = false,
                      fullscreen  : bool                  = false,
                      borderless  : bool                  = false,
                      topmost     : bool                  = false,
-                     debug       : bool                  = false, 
+                     debug       : bool                  = false,
                      initializer : string                = "",
                      callHandler : WebviewCallHandler    = nil): Webview =
 
         result = webview_create(debug.cint)
         discard webview_set_title(result, title=title.cstring)
         discard webview_set_size(result, width.cint, height.cint, if resizable: Constraints.Default else: Constraints.Fixed)
+
+        # Bind + inject BEFORE the first navigation. WebView2 applies
+        # AddScriptToExecuteOnDocumentCreated only to later documents;
+        # set_html-first was why Windows needed a manual refresh.
+        let bridgeJs = (static readFile(parentDir(currentSourcePath()) & "/webviews.js")) &
+                       "\n" &
+                       initializer
+        discard webview_init(result, bridgeJs.cstring)
+
+        let handler = proc (seqId: ccstring, req: ccstring, arg: pointer) {.cdecl.} =
+            let replyId = $(cast[cstring](seqId))
+            let raw = $(cast[cstring](req))
+            var status = 0
+            var payload = "null"
+
+            try:
+                let request = parseJson(raw)
+                let mode = request.elems[0].str
+                let value = valueFromJson(request.elems[1].str)
+
+                var callKind: WebviewCallKind
+                case mode:
+                    of "call"   : callKind = FunctionCall
+                    of "exec"   : callKind = ExecuteCode
+                    of "event"  : callKind = WebviewEvent
+                    else:
+                        status = 1
+                        callKind = UnrecognizedCall
+
+                if callKind != UnrecognizedCall:
+                    payload = jsonFromValue(mainCallHandler(callKind, value), pretty=false)
+                    if payload.len == 0:
+                        payload = "null"
+            except CatchableError:
+                status = 1
+                payload = $newJString(getCurrentExceptionMsg())
+
+            discard webview_return(mainWebview, replyId.cstring, status.cint, payload.cstring)
+
+        mainWebview = result
+        mainCallHandler = callHandler
+        discard result.webview_bind("callback", handler, cast[pointer](0))
+
         if content.isUrl():
             discard webview_navigate(result, content.cstring)
         else:
-            discard webview_set_html(result, content.cstring)
-
-        discard webview_init(result,(
-            (static readFile(parentDir(currentSourcePath()) & "/webviews.js")) & 
-            "\n" & 
-            initializer
-        ).cstring)
+            let html = prepareWebviewHtml(content)
+            discard webview_set_html(result, html.cstring)
 
         if maximized:
             result.getWindow().maximize()
@@ -190,70 +254,10 @@ when defined(WEBVIEW):
         if topmost or borderless:
             result.getWindow().topmost()
 
-        let handler = proc (seq: ccstring, req: ccstring, arg: pointer) {.cdecl.} =
-            var request = parseJson($(cast[cstring](req)))
-
-            let mode = request.elems[0].str
-            let value = valueFromJson(request.elems[1].str)
-
-            var res = 0
-            var callKind: WebviewCallKind
-            var returned: cstring = "{}"
-
-            case mode:
-                of "call"   : callKind = FunctionCall
-                of "exec"   : callKind = ExecuteCode
-                of "event"  : callKind = WebviewEvent
-                else        : 
-                    res = 1
-                    callKind = UnrecognizedCall
-
-
-            if callKind != UnrecognizedCall:
-                returned = jsonFromValue(mainCallHandler(callKind, value), pretty=false).cstring
-
-            discard webview_return(mainWebview, cast[cstring](seq), res.cint, returned)
-
-        mainWebview = result
-        mainCallHandler = callHandler
-        discard result.webview_bind("callback", handler, cast[pointer](0))
-
     proc show*(w: Webview) =
-        # when defined(macosx):
-        #     generateDefaultMainMenu()
-        
-
-        # Create File menu
-        let fileMenu = newMenu("File")
-        discard fileMenu.addItem("New") do (userData: pointer):
-            echo "New file"
-        discard fileMenu.addItem("Open")
-        discard fileMenu.addSeparator()
-
-        # Create Share menu
-        let shareMenu = newMenu()  # Using newMenu() for submenu
-
-        # Add items to Share menu using the proper Nim API
-        discard shareMenu.addItem("Facebook") do (userData: pointer):
-            echo "Shared to Facebook"
-        discard shareMenu.addItem("Twitter") do (userData: pointer):
-            echo "Shared to Twitter"
-        discard shareMenu.addItem("Instagram") do (userData: pointer):
-            echo "Shared to Instagram"
-
-        # Add Share submenu to File menu
-        discard fileMenu.addSubmenu("Share", shareMenu)
-
-        discard fileMenu.addItem("Exit")
-
-        # Create Edit menu
-        let editMenu = newMenu("Edit")
-        let undoItem = editMenu.addItem("Undo")
-        undoItem.setShortcut("Ctrl+Z")
-
-        # Set the menu bar
-        w.getWindow().setMenus([fileMenu, editMenu])
-
+        # A webview is just a window + a page. No dummy File/Share bar —
+        # that leftover test menu was Windows-only and every Share item
+        # collapsed onto the last callback.
         discard webview_run(w)
         discard webview_destroy(w)
 

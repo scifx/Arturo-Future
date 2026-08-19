@@ -35,10 +35,21 @@ import vm/values/custom/[vregex, verror]
 #  labels: helpers, enhancement, unit-test
 
 proc generateJsonNode*(n: Value): JsonNode =
+    ## Always return a real JsonNode. A `discard` here used to leave `result`
+    ## as nil, which then crashed `jsonFromValue` / produced invalid JSON
+    ## for anything richer than a scalar — including a Block/Dictionary
+    ## that merely *contained* a function.
     case n.kind
         of Null         : result = newJNull()
         of Logical      : result = newJBool(if isTrue(n): true else: false)
-        of Integer      : result = newJInt(n.i)
+        of Integer      :
+            if likely(n.iKind == NormalInteger):
+                result = newJInt(n.i)
+            else:
+                # Do not stringify n.bi here: GMP `$`(Int) lives in
+                # helpers/bignums and is not in scope. valueAsString already
+                # does the right thing for BigInteger on every backend.
+                result = newJString(valueAsString(n))
         of Floating     : result = newJFloat(n.f)
         of Version      : result = newJString($(n))
         of Type         : result = newJString($(n.t))
@@ -51,7 +62,7 @@ proc generateJsonNode*(n: Value): JsonNode =
            AttributeLabel   : result = newJString(n.s)
         of Path,
            PathLabel,
-           PathLiteral  : 
+           PathLiteral  :
            result = newJArray()
            for v in n.p:
                 result.add(generateJsonNode(v))
@@ -64,9 +75,11 @@ proc generateJsonNode*(n: Value): JsonNode =
         of Regex        : result = newJString($(n.rx))
         of Color        : result = newJString($(n))
         of Date         : result = newJString($(n))
-        of Binary       : discard
+        of Complex,
+           Rational     : result = newJString($(n))
+        of Binary       : result = newJNull()
         of Inline,
-           Block        : 
+           Block        :
            result = newJArray()
            for v in n.a:
                 result.add(generateJsonNode(v))
@@ -88,9 +101,7 @@ proc generateJsonNode*(n: Value): JsonNode =
             for k,v in pairs(n.sto.data):
                 result.add(k, generateJsonNode(v))
 
-        of Complex,
-           Rational,
-           Function,
+        of Function,
            Method,
            Database,
            Socket,
@@ -100,7 +111,7 @@ proc generateJsonNode*(n: Value): JsonNode =
            Event,
            Channel,
            Nothing,
-           Any          : discard
+           Any          : result = newJNull()
 
 proc parseJsonNode*(n: JsonNode): Value =
 
@@ -229,7 +240,9 @@ proc valueFromJson*(src: string): Value =
     parseJsonNode(parseJson(src))
 
 proc jsonFromValue*(val: Value, pretty: bool = true): string =
-    let node = generateJsonNode(val)
+    var node = generateJsonNode(val)
+    if node.isNil:
+        node = newJNull()
     if pretty: json.pretty(node, indent=4)
     else: $(node)
 
