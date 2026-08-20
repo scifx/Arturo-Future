@@ -33,6 +33,7 @@ import vm/[
     eval, 
     exec, 
     globals, 
+    locales,
     parse, 
     runtime,
     stack, 
@@ -138,61 +139,6 @@ proc setupLibrary() =
     for name, moduleDefinition in LibraryModules:
         moduleDefinition(name)
 
-proc setupUtf8Aliases() =
-    const utf8Aliases = [
-        ("打印", "print"),
-        ("输出", "print"),
-        ("如果", "if"),
-        ("切换", "switch"),
-        ("除非", "unless"),
-        ("当", "when"),
-        ("做", "do"),
-        ("函数", "function"),
-        ("方法", "method"),
-        ("模块", "module"),
-        ("导入", "import"),
-        ("导出", "export"),
-        ("返回", "return"),
-        ("继续", "continue"),
-        ("中断", "break"),
-        ("变量", "var"),
-        ("令", "let"),
-        ("设", "let"),
-        ("调用", "call"),
-        ("解析", "parse"),
-        ("使用", "using"),
-        ("数组", "array"),
-        ("字典", "dictionary"),
-        ("范围", "range"),
-        ("到", "to"),
-        ("循环", "loop"),
-        ("映射", "map"),
-        ("筛选", "select"),
-        ("大小", "size"),
-        ("追加", "append"),
-        ("连接", "join"),
-        ("分割", "split"),
-        ("反转", "reverse"),
-        ("任意", "any"),
-        ("空", "null"),
-        ("真", "true"),
-        ("假", "false"),
-        ("设置?", "set?"),
-        ("不是?", "not?"),
-        ("并且?", "and?"),
-        ("或者?", "or?"),
-        ("等于?", "equal?"),
-        ("大于?", "greater?"),
-        ("大于等于?", "greaterOrEqual?"),
-        ("小于?", "less?"),
-        ("小于等于?", "lessOrEqual?")
-    ]
-
-    for (aliasName, sourceName) in utf8Aliases:
-        let sym = Syms.getOrDefault(sourceName)
-        if not sym.isNil:
-            SetSym(aliasName, sym)
-
 template initialize(args: seq[string], filename: string, isFile:bool, scriptData:Value = nil, mutedColors: bool = false, portableData = "") =
     # stack
     createMainStack()
@@ -253,7 +199,7 @@ template initialize(args: seq[string], filename: string, isFile:bool, scriptData
 
     # library
     setupLibrary()
-    setupUtf8Aliases()
+    setupLocales()
 
     # dumper
     Dumper = proc (v:Value):string =

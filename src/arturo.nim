@@ -38,7 +38,7 @@ when not defined(WEB) and not defined(BUNDLE):
 import vm/vm
 
 when not defined(WEB):
-    import vm/[parse, values/value, values/printable]
+    import vm/[locales, parse, values/value, values/printable]
     when not defined(MINI):
         import vm/[packager]
 
@@ -106,6 +106,7 @@ Commands:
 
 Options:
     --no-color                              Mute all colors from output
+    --locale <file>                         Load keyword aliases from a translation file
 
 Experimental:
     -c, --compile                           Compile script and write bytecode
@@ -240,6 +241,13 @@ when isMainModule and not defined(WEB):
                             action = generateBundle
                         of "as":
                             bundleName = token.val
+                        of "locale":
+                            if token.val != "":
+                                CmdlineLocalePath = token.val
+                            else:
+                                token.next()
+                                if token.kind == cmdArgument:
+                                    CmdlineLocalePath = token.key
                         
                         else:
                             unrecognizedOption = token.key
